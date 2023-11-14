@@ -4,6 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"fmt"
 	"io"
 	"net/url"
 	"strings"
@@ -93,8 +94,25 @@ var _ = Describe("CLI Service", func() {
 				It("instructs the API client to not use the cache", func() {})
 			})
 
+			Context("and an optional task key argument", func() {
+				BeforeEach(func() {
+					runConfig.TargetedTask = fmt.Sprintf("%d", GinkgoRandomSeed())
+
+					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*url.URL, error) {
+						Expect(cfg.TaskDefinitions).To(HaveLen(1))
+						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
+						Expect(cfg.TargetedTaskKey).To(Equal(fmt.Sprintf("%d", GinkgoRandomSeed())))
+						receivedFileContent = cfg.TaskDefinitions[0].FileContents
+						return runURL, nil
+					}
+				})
+
+				It("instructs the API client to target the specified task key", func() {})
+			})
+
 			Context("and optional `--init-parameter` flags", func() {
 				BeforeEach(func() {
+					// TODO
 				})
 			})
 		})
@@ -121,6 +139,33 @@ var _ = Describe("CLI Service", func() {
 				It("returns an error", func() {
 					Expect(err).To(HaveOccurred())
 					Expect(err.Error()).To(ContainSubstring("No run definitions provided"))
+				})
+			})
+
+			Context("which contains an invalid yaml file", func() {
+				var originalFileContent string
+				var err error
+
+				BeforeEach(func() {
+					err = nil
+					originalFileContent = "tasks:\n  - key:\n      run: - echo 'bar'\n"
+
+					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
+						file := mocks.DirEntry{FileName: "mint.yaml"}
+						return []fs.DirEntry{file}, nil
+					}
+					mockFS.MockOpen = func(path string) (fs.File, error) {
+						return io.NopCloser(strings.NewReader(originalFileContent)), nil
+					}
+				})
+
+				JustBeforeEach(func() {
+					_, err = service.InitiateRun(runConfig)
+				})
+
+				It("returns an error", func() {
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("Parsing error encountered"))
 				})
 			})
 

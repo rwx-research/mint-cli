@@ -21,7 +21,7 @@ var (
 	service  cli.Service
 
 	runCmd = &cobra.Command{
-		Args: cobra.NoArgs,
+		Args: cobra.MaximumNArgs(1),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.New(client.Config{AccessToken: AccessToken, Host: mintHost})
 			if err != nil {
@@ -32,7 +32,17 @@ var (
 			return err
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runURL, err := service.InitiateRun(cli.InitiateRunConfig{MintDirectory: MintDirectory, MintFilePath: MintFilePath, NoCache: NoCache})
+			targetedTask := ""
+			if len(args) == 1 {
+				targetedTask = args[0]
+			}
+
+			runURL, err := service.InitiateRun(cli.InitiateRunConfig{
+				MintDirectory: MintDirectory,
+				MintFilePath:  MintFilePath,
+				NoCache:       NoCache,
+				TargetedTask:  targetedTask,
+			})
 			if err != nil {
 				return err
 			}
@@ -42,7 +52,7 @@ var (
 
 		},
 		Short: "Start a new run on Mint",
-		Use:   "run [flags] --user-access-token=<token>",
+		Use:   "run [flags] --user-access-token=<token> [task]",
 	}
 )
 

@@ -23,6 +23,7 @@ func (c Config) Validate() error {
 
 type InitiateRunConfig struct {
 	TaskDefinitions []TaskDefinition
+	TargetedTaskKey string
 	UseCache        bool
 }
 

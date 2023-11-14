@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/rwx-research/mint-cli/internal/client"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Service struct {
@@ -50,8 +52,16 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 		return nil, err
 	}
 
+	for _, taskDefinition := range taskDefinitions {
+		if err := validateYAML(taskDefinition.FileContents); err != nil {
+			// TODO: Custom error
+			return nil, fmt.Errorf("Parsing error encountered within the definitions at %s:\n\n%s", taskDefinition.Path, err.Error())
+		}
+	}
+
 	runURL, err := s.Client.InitiateRun(client.InitiateRunConfig{
 		TaskDefinitions: taskDefinitions,
+		TargetedTaskKey: cfg.TargetedTask,
 		UseCache:        !cfg.NoCache,
 	})
 	if err != nil {
@@ -109,4 +119,10 @@ func (s Service) yamlFilePathsInDirectory(dir string) ([]string, error) {
 	}
 
 	return paths, nil
+}
+
+func validateYAML(body string) error {
+	contentMap := make(map[string]any)
+	// TODO: Wrap
+	return yaml.Unmarshal([]byte(body), &contentMap)
 }

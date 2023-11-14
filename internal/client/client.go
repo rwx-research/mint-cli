@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 )
@@ -60,7 +61,12 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 201 {
-		return nil, errors.New(fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
+		msg := extractErrorMessage(resp.Body)
+		if msg == "" {
+			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
+		}
+
+		return nil, errors.New(msg)
 	}
 
 	respBody := struct {
@@ -79,4 +85,18 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	}
 
 	return runURL, nil
+}
+
+func extractErrorMessage(reader io.Reader) string {
+	errorStruct := struct {
+		Error struct {
+			Message string
+		}
+	}{}
+
+	if err := json.NewDecoder(reader).Decode(&errorStruct); err != nil {
+		return ""
+	}
+
+	return errorStruct.Error.Message
 }
