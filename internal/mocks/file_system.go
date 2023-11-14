@@ -7,7 +7,8 @@ import (
 )
 
 type FileSystem struct {
-	MockOpen func(name string) (fs.File, error)
+	MockOpen    func(name string) (fs.File, error)
+	MockReadDir func(name string) ([]fs.DirEntry, error)
 }
 
 func (f *FileSystem) Open(name string) (fs.File, error) {
@@ -16,5 +17,14 @@ func (f *FileSystem) Open(name string) (fs.File, error) {
 	}
 
 	// TODO: Custom error type?
-	return nil, errors.New("MockInitiateRun was not configured")
+	return nil, errors.New("MockOpen was not configured")
+}
+
+func (f *FileSystem) ReadDir(name string) ([]fs.DirEntry, error) {
+	if f.MockReadDir != nil {
+		return f.MockReadDir(name)
+	}
+
+	// TODO: Custom error type?
+	return nil, errors.New("MockReadDir was not configured")
 }

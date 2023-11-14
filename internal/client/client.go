@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 )
 
 type Client struct {
@@ -30,24 +30,24 @@ func New(cfg Config) (Client, error) {
 	return Client{roundTrip}, nil
 }
 
-func (c Client) InitiateRun(cfg InitiateRunConfig) error {
+func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	endpoint := "/api/runs"
 
 	if err := cfg.Validate(); err != nil {
 		// TODO: Wrap
-		return err
+		return nil, err
 	}
 
-	encodedBody, err := json.Marshal(cfg)
+	encodedBody, err := json.Marshal(struct{ Run InitiateRunConfig }{cfg})
 	if err != nil {
 		// TODO: Wrap
-		return err
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(encodedBody))
 	if err != nil {
 		// TODO: Wrap
-		return err
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -55,14 +55,28 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) error {
 	resp, err := c.RoundTrip(req)
 	if err != nil {
 		// TODO: Wrap
-		return err
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 201 {
+		return nil, errors.New(fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
 	}
 
-	if resp.StatusCode != 200 {
-		// TODO: Custom error?
-		body, _ := io.ReadAll(resp.Body)
-		return errors.New(fmt.Sprintf("HTTP call unsuccessful (%s): %s", resp.Status, body))
+	respBody := struct {
+		RunURL string
+	}{}
+
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		// TODO: Wrap
+		return nil, err
 	}
 
-	return nil
+	runURL, err := url.Parse(respBody.RunURL)
+	if err != nil {
+		// TODO: Wrap
+		return nil, err
+	}
+
+	return runURL, nil
 }

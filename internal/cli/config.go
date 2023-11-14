@@ -22,13 +22,16 @@ func (c Config) Validate() error {
 }
 
 type InitiateRunConfig struct {
-	MintFilePath string
+	InitParameters map[string]string
+	MintDirectory  string
+	MintFilePath   string
+	NoCache        bool
 }
 
-func (s InitiateRunConfig) Validate() error {
-	if s.MintFilePath == "" {
+func (c InitiateRunConfig) Validate() error {
+	if c.MintDirectory == "" && c.MintFilePath == "" {
 		// TODO: Custom error type here
-		return errors.New("Missing mint-file")
+		return errors.New("Either the mint directory or the mint config file path needs to be set")
 	}
 
 	return nil

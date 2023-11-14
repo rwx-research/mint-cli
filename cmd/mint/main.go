@@ -7,7 +7,7 @@ import (
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, fmt.Sprintf("Error: %s", err))
 		os.Exit(1)
 	}
 }
