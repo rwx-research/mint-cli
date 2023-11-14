@@ -16,7 +16,7 @@ func (l Local) ReadDir(name string) ([]DirEntry, error) {
 		return nil, err
 	}
 
-	entries := make([]DirEntry, len(files), len(files))
+	entries := make([]DirEntry, len(files))
 	for i, file := range files {
 		entries[i] = file
 	}

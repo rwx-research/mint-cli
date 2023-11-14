@@ -60,9 +60,10 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	}
 
 	runURL, err := s.Client.InitiateRun(client.InitiateRunConfig{
-		TaskDefinitions: taskDefinitions,
-		TargetedTaskKey: cfg.TargetedTask,
-		UseCache:        !cfg.NoCache,
+		InitializationParameters: cfg.InitParameters,
+		TaskDefinitions:          taskDefinitions,
+		TargetedTaskKey:          cfg.TargetedTask,
+		UseCache:                 !cfg.NoCache,
 	})
 	if err != nil {
 		// TODO: Wrap

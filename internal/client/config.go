@@ -22,9 +22,10 @@ func (c Config) Validate() error {
 }
 
 type InitiateRunConfig struct {
-	TaskDefinitions []TaskDefinition
-	TargetedTaskKey string
-	UseCache        bool
+	InitializationParameters map[string]string
+	TaskDefinitions          []TaskDefinition
+	TargetedTaskKey          string
+	UseCache                 bool
 }
 
 func (c InitiateRunConfig) Validate() error {
