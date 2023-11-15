@@ -1,6 +1,10 @@
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/rwx-research/mint-cli/cmd/mint/config"
+
+	"github.com/spf13/cobra"
+)
 
 var (
 	Debug bool
@@ -10,7 +14,7 @@ var (
 		Short:         "A CLI client from www.rwx.com/mint",
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		Version:       version,
+		Version:       config.Version,
 	}
 )
 

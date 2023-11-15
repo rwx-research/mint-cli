@@ -115,5 +115,5 @@ func getLdflags() (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("-X github.com/rwx-research/mint-cli/cmd/mint.version=git-%v", string(sha)), nil
+	return fmt.Sprintf("-X github.com/rwx-research/mint-cli/cmd/mint/config.Version=git-%v", string(sha)), nil
 }
