@@ -22,8 +22,7 @@ func All(ctx context.Context) error {
 	targets := []target{
 		Clean,
 		Build,
-		UnitTest,
-		IntegrationTest,
+		Test,
 		Lint,
 		LintFix,
 	}
@@ -78,16 +77,11 @@ func LintFix(ctx context.Context) error {
 }
 
 // Test executes the test-suite for the Mint-CLI.
-func UnitTest(ctx context.Context) error {
+func Test(ctx context.Context) error {
 	// `ginkgo ./...` or `go test ./...`  work out of the box
 	// but `ginkgo ./...` includes ~ confusing empty test output for integration tests
 	// so `mage test` explicitly doesn't call ginkgo against the `/test/` directory
 	return (makeTestTask("./internal/...", "./cmd/..."))(ctx)
-}
-
-// Test executes the test-suite for the Mint-CLI.
-func IntegrationTest(ctx context.Context) error {
-	return (makeTestTask("-tags", "integration", "./test/"))(ctx)
 }
 
 func makeTestTask(args ...string) func(ctx context.Context) error {
@@ -121,5 +115,5 @@ func getLdflags() (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("-X github.com/rwx-research/mint-cli.Version=testing-%v", string(sha)), nil
+	return fmt.Sprintf("-X github.com/rwx-research/mint-cli/cmd/mint/config.Version=git-%v", string(sha)), nil
 }
