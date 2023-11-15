@@ -1,0 +1,4 @@
+tasks:
+  - key: hello-world
+    use: []
+    run: echo "hello world"

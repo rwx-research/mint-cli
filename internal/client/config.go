@@ -22,7 +22,7 @@ func (c Config) Validate() error {
 type InitiateRunConfig struct {
 	InitializationParameters map[string]string
 	TaskDefinitions          []TaskDefinition
-	TargetedTaskKey          string
+	TargetedTaskKey          string `json:",omitempty"`
 	UseCache                 bool
 }
 
