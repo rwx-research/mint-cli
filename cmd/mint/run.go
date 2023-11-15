@@ -81,7 +81,7 @@ func init() {
 	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions")
 	runCmd.Flags().StringVar(&MintDirectory, "dir", ".mint", "the directory containing your mint task definitions. By default, this is used to source task definitions")
 
-	runCmd.Flags().StringVar(&AccessToken, "access-token", "", "the access token for Mint")
+	runCmd.Flags().StringVar(&AccessToken, "access-token", os.Getenv("RWX_ACCESS_TOKEN"), "the access token for Mint")
 	_ = runCmd.MarkFlagRequired("user-access-token")
 }
 
