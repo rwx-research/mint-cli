@@ -1,9 +1,9 @@
 package mocks
 
 import (
-	"errors"
-
 	"github.com/rwx-research/mint-cli/internal/fs"
+
+	"github.com/pkg/errors"
 )
 
 type FileSystem struct {
@@ -16,7 +16,6 @@ func (f *FileSystem) Open(name string) (fs.File, error) {
 		return f.MockOpen(name)
 	}
 
-	// TODO: Custom error type?
 	return nil, errors.New("MockOpen was not configured")
 }
 
@@ -25,6 +24,5 @@ func (f *FileSystem) ReadDir(name string) ([]fs.DirEntry, error) {
 		return f.MockReadDir(name)
 	}
 
-	// TODO: Custom error type?
 	return nil, errors.New("MockReadDir was not configured")
 }

@@ -109,12 +109,6 @@ var _ = Describe("CLI Service", func() {
 
 				It("instructs the API client to target the specified task key", func() {})
 			})
-
-			Context("and optional `--init-parameter` flags", func() {
-				BeforeEach(func() {
-					// TODO
-				})
-			})
 		})
 
 		Context("with a specific mint directory", func() {
@@ -165,7 +159,7 @@ var _ = Describe("CLI Service", func() {
 
 				It("returns an error", func() {
 					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("Parsing error encountered"))
+					Expect(err.Error()).To(ContainSubstring("unable to parse"))
 				})
 			})
 

@@ -1,19 +1,26 @@
 package fs
 
-import "os"
+import (
+	"os"
+
+	"github.com/pkg/errors"
+)
 
 type Local struct{}
 
 func (l Local) Open(name string) (File, error) {
-	// TODO: Wrap
-	return os.Open(name)
+	fd, err := os.Open(name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to open %q", name)
+	}
+
+	return fd, nil
 }
 
 func (l Local) ReadDir(name string) ([]DirEntry, error) {
 	files, err := os.ReadDir(name)
 	if err != nil {
-		// TODO: Wrap
-		return nil, err
+		return nil, errors.Wrapf(err, "unable to read %q", name)
 	}
 
 	entries := make([]DirEntry, len(files))

@@ -3,11 +3,12 @@ package client
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/pkg/errors"
 )
 
 type Client struct {
@@ -16,8 +17,7 @@ type Client struct {
 
 func New(cfg Config) (Client, error) {
 	if err := cfg.Validate(); err != nil {
-		// TODO: Wrap
-		return Client{}, err
+		return Client{}, errors.Wrap(err, "validation failed")
 	}
 
 	roundTrip := func(req *http.Request) (*http.Response, error) {
@@ -35,28 +35,24 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	endpoint := "/api/runs"
 
 	if err := cfg.Validate(); err != nil {
-		// TODO: Wrap
-		return nil, err
+		return nil, errors.Wrap(err, "validation failed")
 	}
 
 	encodedBody, err := json.Marshal(struct{ Run InitiateRunConfig }{cfg})
 	if err != nil {
-		// TODO: Wrap
-		return nil, err
+		return nil, errors.Wrap(err, "unable to encode as JSON")
 	}
 
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(encodedBody))
 	if err != nil {
-		// TODO: Wrap
-		return nil, err
+		return nil, errors.Wrap(err, "unable to create new HTTP request")
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.RoundTrip(req)
 	if err != nil {
-		// TODO: Wrap
-		return nil, err
+		return nil, errors.Wrap(err, "HTTP request failed")
 	}
 	defer resp.Body.Close()
 
@@ -74,14 +70,12 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	}{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
-		// TODO: Wrap
-		return nil, err
+		return nil, errors.Wrap(err, "unable to parse API response")
 	}
 
 	runURL, err := url.Parse(respBody.RunURL)
 	if err != nil {
-		// TODO: Wrap
-		return nil, err
+		return nil, errors.Wrap(err, "API returned invalid run URL")
 	}
 
 	return runURL, nil

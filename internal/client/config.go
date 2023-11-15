@@ -1,6 +1,6 @@
 package client
 
-import "errors"
+import "github.com/pkg/errors"
 
 type Config struct {
 	Host        string
@@ -9,12 +9,10 @@ type Config struct {
 
 func (c Config) Validate() error {
 	if c.AccessToken == "" {
-		// TODO: Custom error type here
 		return errors.New("Missing access-token")
 	}
 
 	if c.Host == "" {
-		// TODO: Custom error type here
 		return errors.New("Missing host")
 	}
 
@@ -30,7 +28,6 @@ type InitiateRunConfig struct {
 
 func (c InitiateRunConfig) Validate() error {
 	if len(c.TaskDefinitions) == 0 {
-		// TODO: Custom error type here
 		return errors.New("No task definitions")
 	}
 

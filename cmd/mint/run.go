@@ -9,6 +9,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/client"
 	"github.com/rwx-research/mint-cli/internal/fs"
 
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -27,11 +28,15 @@ var (
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.New(client.Config{AccessToken: AccessToken, Host: mintHost})
 			if err != nil {
-				return err
+				return errors.Wrap(err, "unable to initialize API client")
 			}
 
 			service, err = cli.NewService(cli.Config{Client: c, FileSystem: fs.Local{}})
-			return err
+			if err != nil {
+				return errors.Wrap(err, "unable to initialize CLI")
+			}
+
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targetedTask := ""
@@ -41,7 +46,7 @@ var (
 
 			initParams, err := parseInitParameters(InitParameters)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "unable to parse init parameters")
 			}
 
 			runURL, err := service.InitiateRun(cli.InitiateRunConfig{
@@ -85,8 +90,7 @@ func parseInitParameters(params []string) (map[string]string, error) {
 	parse := func(p string) error {
 		fields := strings.Split(p, "=")
 		if len(fields) != 2 {
-			// TODO: Custom error
-			return fmt.Errorf("Unable to parse init-parameter %q", p)
+			return errors.Errorf("unable to parse %q", p)
 		}
 
 		parsedParams[fields[0]] = fields[1]
@@ -100,14 +104,14 @@ func parseInitParameters(params []string) (map[string]string, error) {
 		}
 
 		if err := parse(strings.TrimPrefix(envVar, prefix)); err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 
 	// Parse flag parameters after the environment as they take precedence
 	for _, param := range params {
 		if err := parse(param); err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 	}
 
