@@ -9,6 +9,7 @@ import (
 var (
 	Debug bool
 
+	// rootCmd represents the main `mint` command
 	rootCmd = &cobra.Command{
 		Use:           "mint",
 		Short:         "A CLI client from www.rwx.com/mint",

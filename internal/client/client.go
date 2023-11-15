@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Client is an API Client for Mint
 type Client struct {
 	RoundTrip func(*http.Request) (*http.Response, error)
 }
@@ -31,6 +32,7 @@ func New(cfg Config) (Client, error) {
 	return Client{roundTrip}, nil
 }
 
+// InitiateRun sends a request to Mint for starting a new runn
 func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	endpoint := "/api/runs"
 
@@ -81,6 +83,7 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	return runURL, nil
 }
 
+// extractErrorMessage is a small helper function for parsing an API error message
 func extractErrorMessage(reader io.Reader) string {
 	errorStruct := struct {
 		Error struct {

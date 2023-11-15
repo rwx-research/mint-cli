@@ -70,6 +70,7 @@ var (
 )
 
 func init() {
+	// A different host can only be set over the environment
 	mintHost = os.Getenv("MINT_HOST")
 	if mintHost == "" {
 		mintHost = "mint.rwx.com"
@@ -84,6 +85,8 @@ func init() {
 	_ = runCmd.MarkFlagRequired("user-access-token")
 }
 
+// parseInitParameters converts a list of `key=value` pairs to a map. It also reads any `MINT_INIT_` variables from the
+// environment
 func parseInitParameters(params []string) (map[string]string, error) {
 	parsedParams := make(map[string]string)
 

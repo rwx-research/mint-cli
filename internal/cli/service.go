@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Service holds the main business logic of the CLI.
 type Service struct {
 	Config
 }
@@ -24,12 +25,14 @@ func NewService(cfg Config) (Service, error) {
 	return Service{cfg}, nil
 }
 
+// InitiateRun will connect to the Cloud API and start a new run in Mint.
 func (s Service) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	err := cfg.Validate()
 	if err != nil {
 		return nil, errors.Wrap(err, "validation failed")
 	}
 
+	// If a specific mint-file wasn't supplied over the CLI flags, fall back to reading the mint directory
 	paths := []string{cfg.MintFilePath}
 	if cfg.MintFilePath == "" {
 		paths, err = s.yamlFilePathsInDirectory(cfg.MintDirectory)
@@ -66,6 +69,8 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	return runURL, nil
 }
 
+// taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.
+// No validation takes place here.
 func (s Service) taskDefinitionsFromPaths(paths []string) ([]client.TaskDefinition, error) {
 	taskDefinitions := make([]client.TaskDefinition, 0)
 
@@ -90,6 +95,7 @@ func (s Service) taskDefinitionsFromPaths(paths []string) ([]client.TaskDefiniti
 	return taskDefinitions, nil
 }
 
+// yamlFilePathsInDirectory returns any *.yml and *.yaml files in a given directory, ignoring any sub-directories.
 func (s Service) yamlFilePathsInDirectory(dir string) ([]string, error) {
 	paths := make([]string, 0)
 
@@ -113,6 +119,7 @@ func (s Service) yamlFilePathsInDirectory(dir string) ([]string, error) {
 	return paths, nil
 }
 
+// validateYAML checks whether a string can be parsed as YAML
 func validateYAML(body string) error {
 	contentMap := make(map[string]any)
 	if err := yaml.Unmarshal([]byte(body), &contentMap); err != nil {
