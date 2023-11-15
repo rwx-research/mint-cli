@@ -9,11 +9,11 @@ type Config struct {
 
 func (c Config) Validate() error {
 	if c.AccessToken == "" {
-		return errors.New("Missing access-token")
+		return errors.New("missing access-token")
 	}
 
 	if c.Host == "" {
-		return errors.New("Missing host")
+		return errors.New("missing host")
 	}
 
 	return nil
@@ -28,7 +28,7 @@ type InitiateRunConfig struct {
 
 func (c InitiateRunConfig) Validate() error {
 	if len(c.TaskDefinitions) == 0 {
-		return errors.New("No task definitions")
+		return errors.New("no task definitions")
 	}
 
 	return nil
