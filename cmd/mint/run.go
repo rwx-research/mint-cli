@@ -79,10 +79,8 @@ func init() {
 	runCmd.Flags().BoolVar(&NoCache, "no-cache", false, "do not read or write to the cache")
 	runCmd.Flags().StringArrayVar(&InitParameters, "init-parameters", []string{}, "initialization parameters for the run, available in the `init` context. Can be specified multiple times")
 	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions")
+	runCmd.Flags().StringVar(&AccessToken, "access-token", os.Getenv("RWX_ACCESS_TOKEN"), "the access token for Mint")
 	runCmd.Flags().StringVar(&MintDirectory, "dir", ".mint", "the directory containing your mint task definitions. By default, this is used to source task definitions")
-
-	runCmd.Flags().StringVar(&AccessToken, "access-token", "", "the access token for Mint")
-	_ = runCmd.MarkFlagRequired("user-access-token")
 }
 
 // parseInitParameters converts a list of `key=value` pairs to a map. It also reads any `MINT_INIT_` variables from the
