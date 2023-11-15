@@ -7,7 +7,13 @@ import (
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		if Debug {
+			// Enabling debug output will print stacktraces
+			fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		}
+
 		os.Exit(1)
 	}
 }
