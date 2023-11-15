@@ -17,6 +17,10 @@ jobs:
           CGO_ENABLED=0 \
             LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-$(git rev-parse HEAD)" \
             nix develop --command mage build test
+      - run: |
+         ./mint run --debug -f test/hello-world.mint.yaml
+        env:
+          RWX_ACCESS_TOKEN: ${ secrets.RWX_ACCESS_TOKEN }
 
   unstable-release:
     if: ${{ github.ref == 'refs/heads/main' }}
