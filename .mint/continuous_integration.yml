@@ -1,0 +1,76 @@
+on:
+  github:
+    push:
+      init:
+        branch: ${{ mint.run.git.branch }}
+        commit: ${{ event.github.push.head_commit.id }}
+
+concurrency-pools:
+  - id: rwx-research/mint-cli:${{ init.branch }}
+    if: ${{ init.branch != "main" }}
+    capacity: 1
+    on-overflow: cancel-running
+
+tasks:
+  - key: git-clone
+    call: mint/checkout
+    use: []
+    with:
+      repository: git@github.com:rwx-research/mint-cli.git
+      sha: ${{ init.commit }}
+      ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+  - key: setup-nix
+    use: git-clone
+    run: |
+      sh <(curl -L https://nixos.org/nix/install) --no-daemon
+      mkdir -p /home/ubuntu/.config/nix
+      echo "experimental-features = nix-command flakes" >> /home/ubuntu/.config/nix/nix.conf
+      . /home/ubuntu/.nix-profile/etc/profile.d/nix.sh
+      nix develop --command echo "Nix installed successfully"
+    filter:
+      - flake.nix
+      - flake.lock
+  - key: download-go-dependencies
+    use: setup-nix
+    run: nix develop --command go mod download
+  - key: unit-tests
+    use: download-go-dependencies
+    run: |
+      CGO_ENABLED=0 \
+      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-${{ init.commit }}" \
+      nix develop --command mage test
+  - key: build-mint-cli
+    use: download-go-dependencies
+    run: |
+      CGO_ENABLED=0 \
+        LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-${{ init.commit }}" \
+        nix develop --command mage build
+  - key: integration-tests
+    use: build-mint-cli
+    run: ./mint run --debug -f test/hello-world.mint.yaml
+    env:
+      RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
+  - key: lint-go
+    use: download-go-dependencies
+    run: nix develop --command mage lint
+  - key: lint-nix
+    use: setup-nix
+    run: nix fmt -- --check flake.nix
+  - key: go-mod-tidy
+    use: download-go-dependencies
+    run: |
+      nix develop --command go mod tidy
+      git diff --exit-code
+  - key: kickoff-unstable-release-on-main
+    use: [unit-tests, integration-tests]
+    run: |
+      if [[ "${{ init.branch }}" == "main" ]]; then
+        ./mint run -f .mint/release.yml \
+          --init-parameter "kind=unstable" \
+          --init-parameter "commit=${{ init.commit }}" \
+          --init-parameter "version=UNSTABLE"
+      else
+        echo "Not on main; skipping unstable release"
+      fi
+    env:
+      RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
