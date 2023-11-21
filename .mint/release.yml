@@ -5,7 +5,6 @@ concurrency-pools:
 
 tasks:
   - key: verify-inputs
-    use: []
     run: |
       kind="${{ init.kind }}"
       if [[ $kind != "production" && $kind != "unstable" && $kind != "testing" ]]; then
@@ -19,7 +18,7 @@ tasks:
         echo "${{ init.version }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || (echo "Version number is not formatted as vX.X.X" && false)
       fi
   - key: extract-version-details
-    use: verify-inputs
+    after: verify-inputs
     outputs:
       kv-outputs: [full-version, aliased-version]
     run: |
@@ -44,13 +43,14 @@ tasks:
       echo "aliased-version=$aliasedVersion" >> "$MINT_KV_OUTPUTS"
   - key: git-clone
     call: mint/checkout
-    use: verify-inputs
+    after: verify-inputs
     with:
+      preserve-git-dir: "true"
       repository: git@github.com:rwx-research/mint-cli.git
-      sha: ${{ init.commit }}
+      ref: ${{ init.commit }}
       ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
   - key: ensure-release-not-published
-    use: [git-clone, extract-version-details]
+    use: git-clone
     run: |
       release_not_published=$(gh release view ${{ tasks.extract-version-details.kvOutputs.full-version }} \
         --json isDraft \
@@ -63,7 +63,6 @@ tasks:
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: setup-git-ssh
-    use: []
     run: |
       eval "$(ssh-agent -s)"
       mkdir -p ~/.ssh
@@ -71,7 +70,8 @@ tasks:
       chmod 600 ~/.ssh/id_ed25519
       ssh-add ~/.ssh/id_ed25519
   - key: draft-full-version-release
-    use: [ensure-release-not-published, setup-git-ssh]
+    use: [git-clone, setup-git-ssh]
+    after: [extract-version-details, ensure-release-not-published]
     run: |
       full_version="${{ tasks.extract-version-details.kvOutputs.full-version }}"
       echo "Creating release ${full_version} if it does not exist"
@@ -99,7 +99,6 @@ tasks:
       - flake.nix
       - flake.lock
   - key: setup-codesigning
-    use: []
     run: |
       curl -fsSLO https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.22.0/apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz
       tar xzvf apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz --strip-components=1
@@ -114,7 +113,6 @@ tasks:
     filter: []
     run: npm install yaml@2.3.4
   - key: install-zip
-    use: []
     run: |
       sudo apt-get -y update
       sudo apt-get -y install zip
@@ -130,7 +128,7 @@ tasks:
   #     FULL_VERSION: ${{ tasks.extract-version-details.kvOutputs.full-version }}
 
   - key: build-mint-linux-amd64
-    use: [extract-version-details, setup-nix]
+    use: setup-nix
     run: |
       GOOS=linux \
       GOARCH=amd64 \
@@ -139,6 +137,7 @@ tasks:
       nix develop --command mage
   - key: upload-linux-amd64-to-release
     use: build-mint-linux-amd64
+    after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-linux-x86_64" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
@@ -146,7 +145,7 @@ tasks:
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-linux-arm64
-    use: [extract-version-details, setup-nix]
+    use: setup-nix
     run: |
       GOOS=linux \
       GOARCH=arm64 \
@@ -155,6 +154,7 @@ tasks:
       nix develop --command mage
   - key: upload-linux-arm64-to-release
     use: build-mint-linux-arm64
+    after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-linux-aarch64" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
@@ -162,7 +162,7 @@ tasks:
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-darwin-amd64
-    use: [extract-version-details, setup-nix]
+    use: setup-nix
     run: |
       GOOS=darwin \
       GOARCH=amd64 \
@@ -187,6 +187,7 @@ tasks:
       RWX_APPLE_APP_STORE_CONNECT_API_KEY: ${{ secrets.RWX_APPLE_APP_STORE_CONNECT_API_KEY }}
   - key: upload-darwin-amd64-to-release
     use: notarize-amd64-binary
+    after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-darwin-x86_64" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
@@ -194,7 +195,7 @@ tasks:
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-darwin-arm64
-    use: [extract-version-details, setup-nix]
+    use: setup-nix
     run: |
       GOOS=darwin \
       GOARCH=arm64 \
@@ -219,6 +220,7 @@ tasks:
       RWX_APPLE_APP_STORE_CONNECT_API_KEY: ${{ secrets.RWX_APPLE_APP_STORE_CONNECT_API_KEY }}
   - key: upload-darwin-arm64-to-release
     use: notarize-arm64-binary
+    after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-darwin-aarch64" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
@@ -226,7 +228,7 @@ tasks:
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-windows-amd64
-    use: [extract-version-details, setup-nix]
+    use: setup-nix
     run: |
       GOOS=windows \
       GOARCH=amd64 \
@@ -235,6 +237,7 @@ tasks:
       nix develop --command mage
   - key: upload-windows-amd64-to-release
     use: build-mint-windows-amd64
+    after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-windows-x86_64.exe" | tr '[:upper:]' '[:lower:]')
       mv "mint.exe" "$github_asset_name"
@@ -242,7 +245,7 @@ tasks:
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-windows-arm64
-    use: [extract-version-details, setup-nix]
+    use: setup-nix
     run: |
       GOOS=windows \
       GOARCH=arm64 \
@@ -251,6 +254,7 @@ tasks:
       nix develop --command mage
   - key: upload-windows-arm64-to-release
     use: build-mint-windows-arm64
+    after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-windows-aarch64.exe" | tr '[:upper:]' '[:lower:]')
       mv "mint.exe" "$github_asset_name"
@@ -259,7 +263,7 @@ tasks:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
 
   - key: ensure-uploads-succeeded
-    use:
+    after:
       - upload-linux-amd64-to-release
       - upload-linux-arm64-to-release
       - upload-darwin-amd64-to-release
@@ -269,13 +273,10 @@ tasks:
     run: exit 0
 
   - key: publish-production-release
-    use: [git-clone, extract-version-details, ensure-uploads-succeeded]
+    use: git-clone
+    after: [extract-version-details, ensure-uploads-succeeded]
+    if: ${{ init.kind == "production" }}
     run: |
-      if [[ "${{init.kind}}" != "production" ]]; then
-        echo "Not production; exiting"
-        exit 0
-      fi
-
       gh release edit ${{ tasks.extract-version-details.kvOutputs.full-version }} \
         --draft=false \
         --latest
@@ -283,13 +284,14 @@ tasks:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
 
   - key: update-aliased-version-release
-    use: [ensure-release-not-published, setup-git-ssh, ensure-uploads-succeeded]
+    use: [git-clone, setup-git-ssh]
+    after:
+      - extract-version-details
+      - ensure-release-not-published
+      - ensure-uploads-succeeded
+    if: ${{ tasks.extract-version-details.kvOutputs.aliased-version != "_" }}
     run: |
       aliased_version="${{ tasks.extract-version-details.kvOutputs.aliased-version }}"
-      if [[ $aliased_version == "_" ]]; then
-        echo "No aliased version; exiting"
-        exit 0
-      fi
 
       echo "Creating release ${aliased_version} if it does not exist"
       ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
