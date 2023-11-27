@@ -14,10 +14,10 @@ concurrency-pools:
 tasks:
   - key: git-clone
     call: mint/checkout
-    use: []
     with:
+      preserve-git-dir: "true"
       repository: git@github.com:rwx-research/mint-cli.git
-      sha: ${{ init.commit }}
+      ref: ${{ init.commit }}
       ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
   - key: setup-nix
     use: git-clone
@@ -62,15 +62,13 @@ tasks:
       nix develop --command go mod tidy
       git diff --exit-code
   - key: kickoff-unstable-release-on-main
-    use: [unit-tests, integration-tests]
+    use: build-mint-cli
+    after: [unit-tests, integration-tests]
+    if: ${{ init.branch == "main" }}
     run: |
-      if [[ "${{ init.branch }}" == "main" ]]; then
-        ./mint run -f .mint/release.yml \
-          --init-parameter "kind=unstable" \
-          --init-parameter "commit=${{ init.commit }}" \
-          --init-parameter "version=UNSTABLE"
-      else
-        echo "Not on main; skipping unstable release"
-      fi
+      ./mint run -f .mint/release.yml \
+        --init-parameter "kind=unstable" \
+        --init-parameter "commit=${{ init.commit }}" \
+        --init-parameter "version=UNSTABLE"
     env:
       RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
