@@ -10,6 +10,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/fs"
 
 	"github.com/pkg/errors"
+	"github.com/skratchdot/open-golang/open"
 	"github.com/spf13/cobra"
 )
 
@@ -19,6 +20,7 @@ var (
 	MintDirectory  string
 	MintFilePath   string
 	NoCache        bool
+	Open           bool
 
 	mintHost string
 	service  cli.Service
@@ -60,7 +62,15 @@ var (
 				return err
 			}
 
-			fmt.Printf("Run is watchable at %s\n", runURL.String())
+			runURLString := runURL.String()
+			fmt.Printf("Run is watchable at %s\n", runURLString)
+
+			if Open {
+				if err := open.Run(runURLString); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to open browser.\n")
+				}
+			}
+
 			return nil
 
 		},
@@ -81,6 +91,7 @@ func init() {
 	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions")
 	runCmd.Flags().StringVar(&AccessToken, "access-token", os.Getenv("RWX_ACCESS_TOKEN"), "the access token for Mint")
 	runCmd.Flags().StringVar(&MintDirectory, "dir", ".mint", "the directory containing your mint task definitions. By default, this is used to source task definitions")
+	runCmd.Flags().BoolVar(&Open, "open", false, "open the run in a browser")
 }
 
 // parseInitParameters converts a list of `key=value` pairs to a map. It also reads any `MINT_INIT_` variables from the
