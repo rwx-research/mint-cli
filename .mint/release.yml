@@ -20,7 +20,7 @@ tasks:
   - key: extract-version-details
     after: verify-inputs
     outputs:
-      kv-outputs: [full-version, aliased-version]
+      values: [full-version, aliased-version]
     run: |
       kind="${{ init.kind }}"
 
@@ -39,8 +39,8 @@ tasks:
         aliasedVersion="_"
       fi
 
-      echo "full-version=$fullVersion" >> "$MINT_KV_OUTPUTS"
-      echo "aliased-version=$aliasedVersion" >> "$MINT_KV_OUTPUTS"
+      echo "full-version=$fullVersion" >> "$MINT_VALUES"
+      echo "aliased-version=$aliasedVersion" >> "$MINT_VALUES"
   - key: git-clone
     call: mint/checkout
     after: verify-inputs
@@ -52,7 +52,7 @@ tasks:
   - key: ensure-release-not-published
     use: git-clone
     run: |
-      release_not_published=$(gh release view ${{ tasks.extract-version-details.kvOutputs.full-version }} \
+      release_not_published=$(gh release view ${{ tasks.extract-version-details.values.full-version }} \
         --json isDraft \
         --jq '.isDraft == true' \
       || true)
@@ -73,7 +73,7 @@ tasks:
     use: [git-clone, setup-git-ssh]
     after: [extract-version-details, ensure-release-not-published]
     run: |
-      full_version="${{ tasks.extract-version-details.kvOutputs.full-version }}"
+      full_version="${{ tasks.extract-version-details.values.full-version }}"
       echo "Creating release ${full_version} if it does not exist"
       ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
       git tag --force "${full_version}"
@@ -125,7 +125,7 @@ tasks:
   #     - node_modules/*
   #   run: node bin/generate-dynamic-mint-build-tasks.js >> "${MINT_DYNAMIC_TASKS}/tasks.yml"
   #   env:
-  #     FULL_VERSION: ${{ tasks.extract-version-details.kvOutputs.full-version }}
+  #     FULL_VERSION: ${{ tasks.extract-version-details.values.full-version }}
 
   - key: build-mint-linux-amd64
     use: setup-nix
@@ -133,7 +133,7 @@ tasks:
       GOOS=linux \
       GOARCH=amd64 \
       CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.kvOutputs.full-version }}" \
+      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: upload-linux-amd64-to-release
     use: build-mint-linux-amd64
@@ -141,7 +141,7 @@ tasks:
     run: |
       github_asset_name=$(echo "mint-linux-x86_64" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.kvOutputs.full-version }} "${github_asset_name}" --clobber
+      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-linux-arm64
@@ -150,7 +150,7 @@ tasks:
       GOOS=linux \
       GOARCH=arm64 \
       CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.kvOutputs.full-version }}" \
+      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: upload-linux-arm64-to-release
     use: build-mint-linux-arm64
@@ -158,7 +158,7 @@ tasks:
     run: |
       github_asset_name=$(echo "mint-linux-aarch64" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.kvOutputs.full-version }} "${github_asset_name}" --clobber
+      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-darwin-amd64
@@ -167,7 +167,7 @@ tasks:
       GOOS=darwin \
       GOARCH=amd64 \
       CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.kvOutputs.full-version }}" \
+      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: notarize-amd64-binary
     use: [setup-codesigning, install-zip, build-mint-darwin-amd64]
@@ -191,7 +191,7 @@ tasks:
     run: |
       github_asset_name=$(echo "mint-darwin-x86_64" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.kvOutputs.full-version }} "${github_asset_name}" --clobber
+      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-darwin-arm64
@@ -200,7 +200,7 @@ tasks:
       GOOS=darwin \
       GOARCH=arm64 \
       CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.kvOutputs.full-version }}" \
+      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: notarize-arm64-binary
     use: [setup-codesigning, install-zip, build-mint-darwin-arm64]
@@ -224,7 +224,7 @@ tasks:
     run: |
       github_asset_name=$(echo "mint-darwin-aarch64" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.kvOutputs.full-version }} "${github_asset_name}" --clobber
+      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-windows-amd64
@@ -233,7 +233,7 @@ tasks:
       GOOS=windows \
       GOARCH=amd64 \
       CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.kvOutputs.full-version }}" \
+      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: upload-windows-amd64-to-release
     use: build-mint-windows-amd64
@@ -241,7 +241,7 @@ tasks:
     run: |
       github_asset_name=$(echo "mint-windows-x86_64.exe" | tr '[:upper:]' '[:lower:]')
       mv "mint.exe" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.kvOutputs.full-version }} "${github_asset_name}" --clobber
+      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
   - key: build-mint-windows-arm64
@@ -250,7 +250,7 @@ tasks:
       GOOS=windows \
       GOARCH=arm64 \
       CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.kvOutputs.full-version }}" \
+      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: upload-windows-arm64-to-release
     use: build-mint-windows-arm64
@@ -258,7 +258,7 @@ tasks:
     run: |
       github_asset_name=$(echo "mint-windows-aarch64.exe" | tr '[:upper:]' '[:lower:]')
       mv "mint.exe" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.kvOutputs.full-version }} "${github_asset_name}" --clobber
+      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
 
@@ -277,7 +277,7 @@ tasks:
     after: [extract-version-details, ensure-uploads-succeeded]
     if: ${{ init.kind == "production" }}
     run: |
-      gh release edit ${{ tasks.extract-version-details.kvOutputs.full-version }} \
+      gh release edit ${{ tasks.extract-version-details.values.full-version }} \
         --draft=false \
         --latest
     env:
@@ -289,9 +289,9 @@ tasks:
       - extract-version-details
       - ensure-release-not-published
       - ensure-uploads-succeeded
-    if: ${{ tasks.extract-version-details.kvOutputs.aliased-version != "_" }}
+    if: ${{ tasks.extract-version-details.values.aliased-version != "_" }}
     run: |
-      aliased_version="${{ tasks.extract-version-details.kvOutputs.aliased-version }}"
+      aliased_version="${{ tasks.extract-version-details.values.aliased-version }}"
 
       echo "Creating release ${aliased_version} if it does not exist"
       ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
@@ -306,7 +306,7 @@ tasks:
         --title "Mint CLI ${aliased_version}"
 
       mkdir ./full_release && cd ./full_release
-      gh release download ${{ tasks.extract-version-details.kvOutputs.full-version }}
+      gh release download ${{ tasks.extract-version-details.values.full-version }}
       gh release upload "${aliased_version}" mint-* --clobber
 
       rm -f ~/.ssh/known_hosts
