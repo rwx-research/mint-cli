@@ -8,6 +8,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/cli"
 
 	"github.com/rwx-research/mint-cli/internal/client"
+
 	"github.com/rwx-research/mint-cli/internal/fs"
 
 	"github.com/pkg/errors"
