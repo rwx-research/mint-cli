@@ -49,8 +49,15 @@ tasks:
       repository: git@github.com:rwx-research/mint-cli.git
       ref: ${{ init.commit }}
       ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+  - key: install-gh-cli
+    run: |
+      curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+      && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+      && sudo apt-get update \
+      && sudo apt-get install gh -y
   - key: ensure-release-not-published
-    use: git-clone
+    use: install-gh-cli
     run: |
       release_not_published=$(gh release view ${{ tasks.extract-version-details.values.full-version }} \
         --json isDraft \
@@ -62,20 +69,12 @@ tasks:
       fi
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-  - key: setup-git-ssh
-    run: |
-      eval "$(ssh-agent -s)"
-      mkdir -p ~/.ssh
-      echo "${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}" > ~/.ssh/id_ed25519
-      chmod 600 ~/.ssh/id_ed25519
-      ssh-add ~/.ssh/id_ed25519
   - key: draft-full-version-release
-    use: [git-clone, setup-git-ssh]
+    use: [git-clone, install-gh-cli]
     after: [extract-version-details, ensure-release-not-published]
     run: |
       full_version="${{ tasks.extract-version-details.values.full-version }}"
       echo "Creating release ${full_version} if it does not exist"
-      ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
       git tag --force "${full_version}"
       git push --force origin "${full_version}"
       gh release view "${full_version}" || \
@@ -84,9 +83,9 @@ tasks:
         --prerelease=${{ init.kind != 'production' }} \
         --generate-notes \
         --title "Mint CLI ${full_version}"
-      rm -f ~/.ssh/known_hosts
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
+      GIT_SSH_KEY: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
   - key: setup-nix
     use: git-clone
     run: |
@@ -136,7 +135,7 @@ tasks:
       LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: upload-linux-amd64-to-release
-    use: build-mint-linux-amd64
+    use: [build-mint-linux-amd64, install-gh-cli]
     after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-linux-x86_64" | tr '[:upper:]' '[:lower:]')
@@ -153,7 +152,7 @@ tasks:
       LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: upload-linux-arm64-to-release
-    use: build-mint-linux-arm64
+    use: [build-mint-linux-arm64, install-gh-cli]
     after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-linux-aarch64" | tr '[:upper:]' '[:lower:]')
@@ -186,7 +185,7 @@ tasks:
       RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT: "${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_CERTIFICATE }}${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_PRIVATE_KEY }}"
       RWX_APPLE_APP_STORE_CONNECT_API_KEY: ${{ secrets.RWX_APPLE_APP_STORE_CONNECT_API_KEY }}
   - key: upload-darwin-amd64-to-release
-    use: notarize-amd64-binary
+    use: [notarize-amd64-binary, install-gh-cli]
     after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-darwin-x86_64" | tr '[:upper:]' '[:lower:]')
@@ -219,7 +218,7 @@ tasks:
       RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT: "${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_CERTIFICATE }}${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_PRIVATE_KEY }}"
       RWX_APPLE_APP_STORE_CONNECT_API_KEY: ${{ secrets.RWX_APPLE_APP_STORE_CONNECT_API_KEY }}
   - key: upload-darwin-arm64-to-release
-    use: notarize-arm64-binary
+    use: [notarize-arm64-binary, install-gh-cli]
     after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-darwin-aarch64" | tr '[:upper:]' '[:lower:]')
@@ -236,7 +235,7 @@ tasks:
       LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: upload-windows-amd64-to-release
-    use: build-mint-windows-amd64
+    use: [build-mint-windows-amd64, install-gh-cli]
     after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-windows-x86_64.exe" | tr '[:upper:]' '[:lower:]')
@@ -253,7 +252,7 @@ tasks:
       LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
   - key: upload-windows-arm64-to-release
-    use: build-mint-windows-arm64
+    use: [build-mint-windows-arm64, install-gh-cli]
     after: [draft-full-version-release, extract-version-details]
     run: |
       github_asset_name=$(echo "mint-windows-aarch64.exe" | tr '[:upper:]' '[:lower:]')
@@ -273,7 +272,7 @@ tasks:
     run: exit 0
 
   - key: publish-production-release
-    use: git-clone
+    use: install-gh-cli
     after: [extract-version-details, ensure-uploads-succeeded]
     if: ${{ init.kind == "production" }}
     run: |
@@ -284,7 +283,7 @@ tasks:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
 
   - key: update-aliased-version-release
-    use: [git-clone, setup-git-ssh]
+    use: [git-clone, install-gh-cli]
     after:
       - extract-version-details
       - ensure-release-not-published
@@ -294,7 +293,6 @@ tasks:
       aliased_version="${{ tasks.extract-version-details.values.aliased-version }}"
 
       echo "Creating release ${aliased_version} if it does not exist"
-      ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
       git tag --force "${aliased_version}"
       git push --force origin "${aliased_version}"
       gh release view "${aliased_version}" || \
@@ -308,7 +306,6 @@ tasks:
       mkdir ./full_release && cd ./full_release
       gh release download ${{ tasks.extract-version-details.values.full-version }}
       gh release upload "${aliased_version}" mint-* --clobber
-
-      rm -f ~/.ssh/known_hosts
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
+      GIT_SSH_KEY: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
