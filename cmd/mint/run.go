@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ import (
 var (
 	AccessToken    string
 	InitParameters []string
+	Json           bool
 	MintDirectory  string
 	MintFilePath   string
 	NoCache        bool
@@ -51,8 +53,9 @@ var (
 				return errors.Wrap(err, "unable to parse init parameters")
 			}
 
-			runURL, err := service.InitiateRun(cli.InitiateRunConfig{
+			runResult, err := service.InitiateRun(cli.InitiateRunConfig{
 				InitParameters: initParams,
+				Json:           Json,
 				MintDirectory:  MintDirectory,
 				MintFilePath:   MintFilePath,
 				NoCache:        NoCache,
@@ -62,11 +65,19 @@ var (
 				return err
 			}
 
-			runURLString := runURL.String()
-			fmt.Printf("Run is watchable at %s\n", runURLString)
+
+			if Json {
+				runResultJson, err := json.Marshal(runResult)
+				if err != nil {
+					return err
+				}
+				fmt.Println(string(runResultJson))
+			} else {
+				fmt.Printf("Run is watchable at %s\n", runResult.RunURL)
+			}
 
 			if Open {
-				if err := open.Run(runURLString); err != nil {
+				if err := open.Run(runResult.RunURL); err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to open browser.\n")
 				}
 			}
@@ -92,6 +103,7 @@ func init() {
 	runCmd.Flags().StringVar(&AccessToken, "access-token", os.Getenv("RWX_ACCESS_TOKEN"), "the access token for Mint")
 	runCmd.Flags().StringVar(&MintDirectory, "dir", ".mint", "the directory containing your mint task definitions. By default, this is used to source task definitions")
 	runCmd.Flags().BoolVar(&Open, "open", false, "open the run in a browser")
+	runCmd.Flags().BoolVar(&Json, "json", false, "output json data to stdout")
 }
 
 // parseInitParameters converts a list of `key=value` pairs to a map. It also reads any `MINT_INIT_` variables from the

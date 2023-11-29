@@ -6,7 +6,6 @@ import (
 
 	"fmt"
 	"io"
-	"net/url"
 	"strings"
 
 	"github.com/rwx-research/mint-cli/internal/cli"
@@ -49,7 +48,6 @@ var _ = Describe("CLI Service", func() {
 		Context("with a specific mint config file", func() {
 			var originalFileContent string
 			var receivedFileContent string
-			var runURL = new(url.URL)
 
 			BeforeEach(func() {
 				originalFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
@@ -60,12 +58,17 @@ var _ = Describe("CLI Service", func() {
 					Expect(name).To(Equal("mint.yml"))
 					return io.NopCloser(strings.NewReader(originalFileContent)), nil
 				}
-				mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*url.URL, error) {
+				mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
 					Expect(cfg.TaskDefinitions).To(HaveLen(1))
 					Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
 					Expect(cfg.UseCache).To(BeTrue())
 					receivedFileContent = cfg.TaskDefinitions[0].FileContents
-					return runURL, nil
+					return &client.InitiateRunResult{
+						RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+						RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+						TargetedTaskKey: "",
+						DefinitionPath: ".mint/mint.yml",
+					}, nil
 				}
 			})
 
@@ -82,12 +85,17 @@ var _ = Describe("CLI Service", func() {
 				BeforeEach(func() {
 					runConfig.NoCache = true
 
-					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*url.URL, error) {
+					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
 						Expect(cfg.UseCache).To(BeFalse())
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
-						return runURL, nil
+						return &client.InitiateRunResult{
+							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							TargetedTaskKey: "",
+							DefinitionPath: ".mint/mint.yml",
+						}, nil
 					}
 				})
 
@@ -98,12 +106,17 @@ var _ = Describe("CLI Service", func() {
 				BeforeEach(func() {
 					runConfig.TargetedTask = fmt.Sprintf("%d", GinkgoRandomSeed())
 
-					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*url.URL, error) {
+					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
 						Expect(cfg.TargetedTaskKey).To(Equal(fmt.Sprintf("%d", GinkgoRandomSeed())))
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
-						return runURL, nil
+						return &client.InitiateRunResult{
+							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							TargetedTaskKey: "",
+							DefinitionPath: ".mint/mint.yml",
+						}, nil
 					}
 				})
 
@@ -166,7 +179,6 @@ var _ = Describe("CLI Service", func() {
 			Context("which contains a mixture of files", func() {
 				var originalFileContents map[string]string
 				var receivedFileContents map[string]string
-				var runURL = new(url.URL)
 
 				BeforeEach(func() {
 					receivedFileContents = make(map[string]string)
@@ -175,11 +187,16 @@ var _ = Describe("CLI Service", func() {
 					originalFileContents["test/onetwo.yml"] = "tasks:\n  - key: one\n    run: echo 'two'\n"
 					originalFileContents["test/helloworld.json"] = "tasks:\n  - key: hello\n    run: echo 'world'\n"
 
-					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*url.URL, error) {
+					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
 						for _, def := range cfg.TaskDefinitions {
 							receivedFileContents[def.Path] = def.FileContents
 						}
-						return runURL, nil
+						return &client.InitiateRunResult{
+							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							TargetedTaskKey: "",
+							DefinitionPath: ".mint/mint.yml",
+						}, nil
 					}
 					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
 						foobar := mocks.DirEntry{FileName: "foobar.yaml"}

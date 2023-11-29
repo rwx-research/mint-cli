@@ -21,6 +21,7 @@ func (c Config) Validate() error {
 
 type InitiateRunConfig struct {
 	InitParameters map[string]string
+	Json           bool
 	MintDirectory  string
 	MintFilePath   string
 	NoCache        bool

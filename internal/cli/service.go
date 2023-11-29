@@ -2,7 +2,6 @@ package cli
 
 import (
 	"io"
-	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -26,7 +25,7 @@ func NewService(cfg Config) (Service, error) {
 }
 
 // InitiateRun will connect to the Cloud API and start a new run in Mint.
-func (s Service) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
+func (s Service) InitiateRun(cfg InitiateRunConfig) (*client.InitiateRunResult, error) {
 	err := cfg.Validate()
 	if err != nil {
 		return nil, errors.Wrap(err, "validation failed")
@@ -56,7 +55,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 		}
 	}
 
-	runURL, err := s.Client.InitiateRun(client.InitiateRunConfig{
+	runResult, err := s.Client.InitiateRun(client.InitiateRunConfig{
 		InitializationParameters: cfg.InitParameters,
 		TaskDefinitions:          taskDefinitions,
 		TargetedTaskKey:          cfg.TargetedTask,
@@ -66,7 +65,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 		return nil, errors.Wrap(err, "unable to initiate run")
 	}
 
-	return runURL, nil
+	return runResult, nil
 }
 
 // taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.

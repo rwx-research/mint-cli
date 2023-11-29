@@ -1,6 +1,8 @@
 package client
 
-import "github.com/pkg/errors"
+import (
+	"github.com/pkg/errors"
+)
 
 type Config struct {
 	Host        string
@@ -24,6 +26,13 @@ type InitiateRunConfig struct {
 	TaskDefinitions          []TaskDefinition
 	TargetedTaskKey          string `json:",omitempty"`
 	UseCache                 bool
+}
+
+type InitiateRunResult struct {
+	RunId           string
+	RunURL          string
+	TargetedTaskKey string
+	DefinitionPath  string
 }
 
 func (c InitiateRunConfig) Validate() error {
