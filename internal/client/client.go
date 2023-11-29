@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"github.com/pkg/errors"
 )
@@ -33,7 +32,7 @@ func New(cfg Config) (Client, error) {
 }
 
 // InitiateRun sends a request to Mint for starting a new runn
-func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
+func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	endpoint := "/api/runs"
 
 	if err := cfg.Validate(); err != nil {
@@ -68,19 +67,22 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 	}
 
 	respBody := struct {
-		RunURL string
+		RunId           string
+		RunURL          string
+		TargetedTaskKey string
+		DefinitionPath  string
 	}{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
 		return nil, errors.Wrap(err, "unable to parse API response")
 	}
 
-	runURL, err := url.Parse(respBody.RunURL)
-	if err != nil {
-		return nil, errors.Wrap(err, "API returned invalid run URL")
-	}
-
-	return runURL, nil
+	return &InitiateRunResult{
+		RunId: respBody.RunId,
+		RunURL: respBody.RunURL,
+		TargetedTaskKey: respBody.TargetedTaskKey,
+		DefinitionPath: respBody.DefinitionPath,
+	}, nil
 }
 
 // extractErrorMessage is a small helper function for parsing an API error message
