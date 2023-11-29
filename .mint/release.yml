@@ -57,7 +57,7 @@ tasks:
       && sudo apt-get update \
       && sudo apt-get install gh
   - key: ensure-release-not-published
-    use: install-gh-cli
+    use: [git-clone, install-gh-cli]
     run: |
       release_not_published=$(gh release view ${{ tasks.extract-version-details.values.full-version }} \
         --json isDraft \
@@ -272,7 +272,7 @@ tasks:
     run: exit 0
 
   - key: publish-production-release
-    use: install-gh-cli
+    use: [git-clone, install-gh-cli]
     after: [extract-version-details, ensure-uploads-succeeded]
     if: ${{ init.kind == "production" }}
     run: |
