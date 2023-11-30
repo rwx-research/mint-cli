@@ -28,7 +28,7 @@ var _ = Describe("CLI Service", func() {
 		mockFS = new(mocks.FileSystem)
 
 		config = cli.Config{
-			Client:     mockClient,
+			APIClient:  mockClient,
 			FileSystem: mockFS,
 		}
 	})

@@ -9,6 +9,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/client"
 
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,6 +24,48 @@ func NewService(cfg Config) (Service, error) {
 	}
 
 	return Service{cfg}, nil
+}
+
+// DebugRunConfig will connect to a running task over SSH. Key exchange is facilitated over the Cloud API.
+func (s Service) DebugTask(cfg DebugTaskConfig) error {
+	err := cfg.Validate()
+	if err != nil {
+		return errors.Wrap(err, "validation failed")
+	}
+
+	runId := filepath.Base(cfg.RunURL)
+
+	connectionInfo, err := s.APIClient.GetDebugConnectionInfo(runId)
+	if err != nil {
+		return errors.Wrapf(err, "unable to fetch connection info for run %s", runId)
+	}
+
+	privateUserKey, err := ssh.ParsePrivateKey(connectionInfo.PrivateUserKey)
+	if err != nil {
+		return errors.Wrapf(err, "unable to parse key material retrieved from Cloud API")
+	}
+
+	publicHostKey, err := ssh.NewPublicKey(connectionInfo.PublicHostKey)
+	if err != nil {
+		return errors.Wrapf(err, "unable to parse host key retrieved from Cloud API")
+	}
+
+	sshConfig := ssh.ClientConfig{
+		User:            "mint-cli", // TODO: Add version number
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(privateUserKey)},
+		HostKeyCallback: ssh.FixedHostKey(publicHostKey),
+	}
+
+	if err = s.SSHClient.Connect(connectionInfo.Address, sshConfig); err != nil {
+		return errors.Wrap(err, "unable to establish SSH connection to remote host")
+	}
+	defer s.SSHClient.Close()
+
+	if err := s.SSHClient.InteractiveSession(); err != nil {
+		return errors.Wrap(err, "unable to start interactive session on remote host")
+	}
+
+	return nil
 }
 
 // InitiateRun will connect to the Cloud API and start a new run in Mint.
@@ -56,7 +99,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*url.URL, error) {
 		}
 	}
 
-	runURL, err := s.Client.InitiateRun(client.InitiateRunConfig{
+	runURL, err := s.APIClient.InitiateRun(client.InitiateRunConfig{
 		InitializationParameters: cfg.InitParameters,
 		TaskDefinitions:          taskDefinitions,
 		TargetedTaskKey:          cfg.TargetedTask,
