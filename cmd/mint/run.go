@@ -39,6 +39,21 @@ var (
 				return errors.Wrap(err, "unable to initialize CLI")
 			}
 
+			for _, arg := range args {
+				if strings.Contains(arg, "=") {
+					initParam := strings.Split(arg, "=")[0]
+					return fmt.Errorf(
+						"You have specified a task target with an equals sign: \"%s\".\n"+
+							"Are you trying to specify an init parameter \"%s\"?\n"+
+							"You can define multiple init parameters by specifying --init-parameter multiple times.\n"+
+							"You may have meant to specify --init-parameter \"%s\".",
+						arg,
+						initParam,
+						arg,
+					)
+				}
+			}
+
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {

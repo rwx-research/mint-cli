@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 )
 
@@ -76,12 +77,22 @@ func LintFix(ctx context.Context) error {
 	return nil
 }
 
-// Test executes the test-suite for the Mint-CLI.
-func Test(ctx context.Context) error {
+func UnitTest(ctx context.Context) error {
 	// `ginkgo ./...` or `go test ./...`  work out of the box
 	// but `ginkgo ./...` includes ~ confusing empty test output for integration tests
 	// so `mage test` explicitly doesn't call ginkgo against the `/test/` directory
 	return (makeTestTask("./internal/...", "./cmd/..."))(ctx)
+}
+
+func IntegrationTest(ctx context.Context) error {
+	mg.Deps(Build)
+	return (makeTestTask("./test/..."))(ctx)
+}
+
+func Test(ctx context.Context) error {
+	mg.Deps(UnitTest)
+	mg.Deps(IntegrationTest)
+	return nil
 }
 
 func makeTestTask(args ...string) func(ctx context.Context) error {
