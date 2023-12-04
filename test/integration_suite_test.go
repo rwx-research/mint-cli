@@ -72,6 +72,6 @@ var _ = Describe("mint run", func() {
 
 		Expect(result.exitCode).To(Equal(1))
 		Expect(result.stderr).To(ContainSubstring("You have specified a task target with an equals sign: \"init=foo\"."))
-		Expect(result.stderr).To(ContainSubstring("You may have meant to specify --init-parameter \"init=foo\"."))
+		Expect(result.stderr).To(ContainSubstring("You may have meant to specify --init \"init=foo\"."))
 	})
 })
