@@ -39,8 +39,8 @@ tasks:
         aliasedVersion="_"
       fi
 
-      echo "full-version=$fullVersion" >> "$MINT_VALUES"
-      echo "aliased-version=$aliasedVersion" >> "$MINT_VALUES"
+      printf "$fullVersion" > "$MINT_VALUES_DIR/full-version"
+      printf "$aliasedVersion" > "$MINT_VALUES_DIR/aliased-version"
   - key: git-clone
     call: mint/checkout
     after: verify-inputs
