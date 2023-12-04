@@ -58,7 +58,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*client.InitiateRunResult, 
 	runResult, err := s.Client.InitiateRun(client.InitiateRunConfig{
 		InitializationParameters: cfg.InitParameters,
 		TaskDefinitions:          taskDefinitions,
-		TargetedTaskKey:          cfg.TargetedTask,
+		TargetedTaskKeys:         cfg.TargetedTasks,
 		UseCache:                 !cfg.NoCache,
 	})
 	if err != nil {

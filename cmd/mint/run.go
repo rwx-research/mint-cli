@@ -28,7 +28,6 @@ var (
 	service  cli.Service
 
 	runCmd = &cobra.Command{
-		Args: cobra.MaximumNArgs(1),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.New(client.Config{AccessToken: AccessToken, Host: mintHost})
 			if err != nil {
@@ -43,9 +42,9 @@ var (
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			targetedTask := ""
-			if len(args) == 1 {
-				targetedTask = args[0]
+			var targetedTasks []string
+			if len(args) >= 0 {
+				targetedTasks = args
 			}
 
 			initParams, err := parseInitParameters(InitParameters)
@@ -59,7 +58,7 @@ var (
 				MintDirectory:  MintDirectory,
 				MintFilePath:   MintFilePath,
 				NoCache:        NoCache,
-				TargetedTask:   targetedTask,
+				TargetedTasks:  targetedTasks,
 			})
 			if err != nil {
 				return err
