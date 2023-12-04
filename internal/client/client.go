@@ -67,10 +67,10 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	}
 
 	respBody := struct {
-		RunId           string
-		RunURL          string
-		TargetedTaskKey string
-		DefinitionPath  string
+		RunId            string
+		RunURL           string
+		TargetedTaskKeys []string
+		DefinitionPath   string
 	}{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
@@ -80,7 +80,7 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	return &InitiateRunResult{
 		RunId: respBody.RunId,
 		RunURL: respBody.RunURL,
-		TargetedTaskKey: respBody.TargetedTaskKey,
+		TargetedTaskKeys: respBody.TargetedTaskKeys,
 		DefinitionPath: respBody.DefinitionPath,
 	}, nil
 }

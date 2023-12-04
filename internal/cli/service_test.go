@@ -66,7 +66,7 @@ var _ = Describe("CLI Service", func() {
 					return &client.InitiateRunResult{
 						RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 						RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-						TargetedTaskKey: "",
+						TargetedTaskKeys: []string{},
 						DefinitionPath: ".mint/mint.yml",
 					}, nil
 				}
@@ -93,7 +93,7 @@ var _ = Describe("CLI Service", func() {
 						return &client.InitiateRunResult{
 							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							TargetedTaskKey: "",
+							TargetedTaskKeys: []string{},
 							DefinitionPath: ".mint/mint.yml",
 						}, nil
 					}
@@ -104,17 +104,17 @@ var _ = Describe("CLI Service", func() {
 
 			Context("and an optional task key argument", func() {
 				BeforeEach(func() {
-					runConfig.TargetedTask = fmt.Sprintf("%d", GinkgoRandomSeed())
+					runConfig.TargetedTasks = []string{fmt.Sprintf("%d", GinkgoRandomSeed())}
 
 					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
-						Expect(cfg.TargetedTaskKey).To(Equal(fmt.Sprintf("%d", GinkgoRandomSeed())))
+						Expect(cfg.TargetedTaskKeys).To(Equal([]string{fmt.Sprintf("%d", GinkgoRandomSeed())}))
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
 						return &client.InitiateRunResult{
 							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							TargetedTaskKey: "",
+							TargetedTaskKeys: []string{},
 							DefinitionPath: ".mint/mint.yml",
 						}, nil
 					}
@@ -194,7 +194,7 @@ var _ = Describe("CLI Service", func() {
 						return &client.InitiateRunResult{
 							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							TargetedTaskKey: "",
+							TargetedTaskKeys: []string{},
 							DefinitionPath: ".mint/mint.yml",
 						}, nil
 					}
