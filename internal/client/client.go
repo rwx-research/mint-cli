@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"github.com/pkg/errors"
+
+	"github.com/rwx-research/mint-cli/cmd/mint/config"
 )
 
 // Client is an API Client for Mint
@@ -23,6 +25,7 @@ func New(cfg Config) (Client, error) {
 	roundTrip := func(req *http.Request) (*http.Response, error) {
 		req.URL.Scheme = "https"
 		req.URL.Host = cfg.Host
+		req.Header.Set("User-Agent", fmt.Sprintf("mint-cli/%s", config.Version))
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.AccessToken))
 
 		return http.DefaultClient.Do(req)
@@ -78,10 +81,10 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	}
 
 	return &InitiateRunResult{
-		RunId: respBody.RunId,
-		RunURL: respBody.RunURL,
+		RunId:            respBody.RunId,
+		RunURL:           respBody.RunURL,
 		TargetedTaskKeys: respBody.TargetedTaskKeys,
-		DefinitionPath: respBody.DefinitionPath,
+		DefinitionPath:   respBody.DefinitionPath,
 	}, nil
 }
 
