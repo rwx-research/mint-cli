@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -12,19 +13,41 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const flagInit = "init"
+
 var (
 	InitParameters []string
+	Json           bool
 	MintDirectory  string
 	MintFilePath   string
 	NoCache        bool
 	Open           bool
 
 	runCmd = &cobra.Command{
-		Args: cobra.MaximumNArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			for _, arg := range args {
+				if strings.Contains(arg, "=") {
+					initParam := strings.Split(arg, "=")[0]
+					return fmt.Errorf(
+						"You have specified a task target with an equals sign: \"%s\".\n"+
+							"Are you trying to specify an init parameter \"%s\"?\n"+
+							"You can define multiple init parameters by specifying --%s multiple times.\n"+
+							"You may have meant to specify --%s \"%s\".",
+						arg,
+						initParam,
+						flagInit,
+						flagInit,
+						arg,
+					)
+				}
+			}
+
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			targetedTask := ""
-			if len(args) == 1 {
-				targetedTask = args[0]
+			var targetedTasks []string
+			if len(args) >= 0 {
+				targetedTasks = args
 			}
 
 			initParams, err := parseInitParameters(InitParameters)
@@ -32,22 +55,30 @@ var (
 				return errors.Wrap(err, "unable to parse init parameters")
 			}
 
-			runURL, err := service.InitiateRun(cli.InitiateRunConfig{
+			runResult, err := service.InitiateRun(cli.InitiateRunConfig{
 				InitParameters: initParams,
+				Json:           Json,
 				MintDirectory:  MintDirectory,
 				MintFilePath:   MintFilePath,
 				NoCache:        NoCache,
-				TargetedTask:   targetedTask,
+				TargetedTasks:  targetedTasks,
 			})
 			if err != nil {
 				return err
 			}
 
-			runURLString := runURL.String()
-			fmt.Printf("Run is watchable at %s\n", runURLString)
+			if Json {
+				runResultJson, err := json.Marshal(runResult)
+				if err != nil {
+					return err
+				}
+				fmt.Println(string(runResultJson))
+			} else {
+				fmt.Printf("Run is watchable at %s\n", runResult.RunURL)
+			}
 
 			if Open {
-				if err := open.Run(runURLString); err != nil {
+				if err := open.Run(runResult.RunURL); err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to open browser.\n")
 				}
 			}
@@ -62,10 +93,11 @@ var (
 
 func init() {
 	runCmd.Flags().BoolVar(&NoCache, "no-cache", false, "do not read or write to the cache")
-	runCmd.Flags().StringArrayVar(&InitParameters, "init-parameter", []string{}, "initialization parameters for the run, available in the `init` context. Can be specified multiple times")
+	runCmd.Flags().StringArrayVar(&InitParameters, flagInit, []string{}, "initialization parameters for the run, available in the `init` context. Can be specified multiple times")
 	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions")
 	runCmd.Flags().StringVar(&MintDirectory, "dir", ".mint", "the directory containing your mint task definitions. By default, this is used to source task definitions")
 	runCmd.Flags().BoolVar(&Open, "open", false, "open the run in a browser")
+	runCmd.Flags().BoolVar(&Json, "json", false, "output json data to stdout")
 }
 
 // parseInitParameters converts a list of `key=value` pairs to a map. It also reads any `MINT_INIT_` variables from the

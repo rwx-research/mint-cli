@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"net/url"
-
 	"github.com/rwx-research/mint-cli/internal/client"
 	"github.com/rwx-research/mint-cli/internal/fs"
 
@@ -11,7 +9,7 @@ import (
 
 type APIClient interface {
 	GetDebugConnectionInfo(runID string) (client.DebugConnectionInfo, error)
-	InitiateRun(client.InitiateRunConfig) (*url.URL, error)
+	InitiateRun(client.InitiateRunConfig) (*client.InitiateRunResult, error)
 }
 
 type FileSystem interface {
