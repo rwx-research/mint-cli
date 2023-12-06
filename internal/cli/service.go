@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -39,12 +40,17 @@ func (s Service) DebugTask(cfg DebugTaskConfig) error {
 		return errors.Wrapf(err, "unable to fetch connection info for run %s", runId)
 	}
 
-	privateUserKey, err := ssh.ParsePrivateKey(connectionInfo.PrivateUserKey)
+	privateUserKey, err := ssh.ParsePrivateKey([]byte(connectionInfo.PrivateUserKey))
 	if err != nil {
 		return errors.Wrapf(err, "unable to parse key material retrieved from Cloud API")
 	}
 
-	publicHostKey, err := ssh.NewPublicKey(connectionInfo.PublicHostKey)
+	rawPublicHostKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(connectionInfo.PublicHostKey))
+	if err != nil {
+		return errors.Wrapf(err, "unable to parse host key retrieved from Cloud API")
+	}
+
+	publicHostKey, err := ssh.ParsePublicKey(rawPublicHostKey.Marshal())
 	if err != nil {
 		return errors.Wrapf(err, "unable to parse host key retrieved from Cloud API")
 	}
@@ -53,6 +59,10 @@ func (s Service) DebugTask(cfg DebugTaskConfig) error {
 		User:            "mint-cli", // TODO: Add version number
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(privateUserKey)},
 		HostKeyCallback: ssh.FixedHostKey(publicHostKey),
+		BannerCallback: func(message string) error {
+			fmt.Println(message)
+			return nil
+		},
 	}
 
 	if err = s.SSHClient.Connect(connectionInfo.Address, sshConfig); err != nil {
