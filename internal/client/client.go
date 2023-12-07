@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/pkg/errors"
 
@@ -16,7 +15,6 @@ import (
 // Client is an API Client for Mint
 type Client struct {
 	RoundTrip func(*http.Request) (*http.Response, error)
-	Host      string
 }
 
 func New(cfg Config) (Client, error) {
@@ -33,12 +31,12 @@ func New(cfg Config) (Client, error) {
 		return http.DefaultClient.Do(req)
 	}
 
-	return Client{roundTrip, cfg.Host}, nil
+	return Client{roundTrip}, nil
 }
 
 // InitiateRun sends a request to Mint for starting a new run
 func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
-	endpoint := c.mintEndpoint("/api/runs")
+	endpoint := "/mint/api/runs"
 
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "validation failed")
@@ -105,12 +103,4 @@ func extractErrorMessage(reader io.Reader) string {
 	}
 
 	return errorStruct.Result.Data.Error
-}
-
-// TODO(TS): Remove this once we're fully transitioned
-func (c Client) mintEndpoint(path string) string {
-	if !strings.Contains(c.Host, "cloud") {
-		return path
-	}
-	return "/mint" + path
 }
