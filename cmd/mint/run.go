@@ -111,7 +111,7 @@ func init() {
 	// A different host can only be set over the environment
 	mintHost = os.Getenv("MINT_HOST")
 	if mintHost == "" {
-		mintHost = "mint.rwx.com"
+		mintHost = "cloud.rwx.com"
 	}
 
 	runCmd.Flags().BoolVar(&NoCache, "no-cache", false, "do not read or write to the cache")
