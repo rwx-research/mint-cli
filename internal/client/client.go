@@ -91,16 +91,12 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 // extractErrorMessage is a small helper function for parsing an API error message
 func extractErrorMessage(reader io.Reader) string {
 	errorStruct := struct {
-		Result struct {
-			Data struct {
-				Error string
-			}
-		}
+		Error string
 	}{}
 
 	if err := json.NewDecoder(reader).Decode(&errorStruct); err != nil {
 		return ""
 	}
 
-	return errorStruct.Result.Data.Error
+	return errorStruct.Error
 }
