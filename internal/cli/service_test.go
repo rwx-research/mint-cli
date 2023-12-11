@@ -235,7 +235,7 @@ var _ = Describe("CLI Service", func() {
 		})
 	})
 
-	FDescribe("debugging a task", func() {
+	Describe("debugging a task", func() {
 		const (
 			// The CLI will validate key material before connecting over SSH, hence we need some "real" keys here
 			privateTestKey = `-----BEGIN OPENSSH PRIVATE KEY-----

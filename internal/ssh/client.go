@@ -6,7 +6,7 @@ import (
 	tsize "github.com/kopoli/go-terminal-size"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 type Client struct {
@@ -38,12 +38,12 @@ func (c *Client) InteractiveSession() error {
 		return errors.Wrapf(err, "unable to determine terminal size")
 	}
 
-	oldTermState, err := terminal.MakeRaw(int(os.Stdout.Fd()))
+	oldTermState, err := term.MakeRaw(int(os.Stdout.Fd()))
 	if err != nil {
 		return errors.Wrapf(err, "unable to switch terminal to raw mode. Is stdout a PTY?")
 	}
 	defer func() {
-		_ = terminal.Restore(int(os.Stdout.Fd()), oldTermState)
+		_ = term.Restore(int(os.Stdout.Fd()), oldTermState)
 	}()
 
 	if err := session.RequestPty(os.Getenv("TERM"), terminalSize.Height, terminalSize.Width, nil); err != nil {
