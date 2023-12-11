@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/pkg/errors"
 
@@ -16,7 +15,6 @@ import (
 // Client is an API Client for Mint
 type Client struct {
 	RoundTrip func(*http.Request) (*http.Response, error)
-	Host      string
 }
 
 func New(cfg Config) (Client, error) {
@@ -33,7 +31,7 @@ func New(cfg Config) (Client, error) {
 		return http.DefaultClient.Do(req)
 	}
 
-	return Client{roundTrip, cfg.Host}, nil
+	return Client{roundTrip}, nil
 }
 
 func (c Client) GetDebugConnectionInfo(runID string) (DebugConnectionInfo, error) {
@@ -73,7 +71,7 @@ func (c Client) GetDebugConnectionInfo(runID string) (DebugConnectionInfo, error
 
 // InitiateRun sends a request to Mint for starting a new run
 func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
-	endpoint := c.mintEndpoint("/api/runs")
+	endpoint := "/mint/api/runs"
 
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "validation failed")
@@ -128,24 +126,12 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 // extractErrorMessage is a small helper function for parsing an API error message
 func extractErrorMessage(reader io.Reader) string {
 	errorStruct := struct {
-		Result struct {
-			Data struct {
-				Error string
-			}
-		}
+		Error string
 	}{}
 
 	if err := json.NewDecoder(reader).Decode(&errorStruct); err != nil {
 		return ""
 	}
 
-	return errorStruct.Result.Data.Error
-}
-
-// TODO(TS): Remove this once we're fully transitioned
-func (c Client) mintEndpoint(path string) string {
-	if !strings.Contains(c.Host, "cloud") {
-		return path
-	}
-	return "/mint" + path
+	return errorStruct.Error
 }

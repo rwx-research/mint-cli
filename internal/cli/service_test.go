@@ -65,7 +65,7 @@ var _ = Describe("CLI Service", func() {
 					receivedFileContent = cfg.TaskDefinitions[0].FileContents
 					return &client.InitiateRunResult{
 						RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-						RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+						RunURL: "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 						TargetedTaskKeys: []string{},
 						DefinitionPath: ".mint/mint.yml",
 					}, nil
@@ -92,7 +92,7 @@ var _ = Describe("CLI Service", func() {
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
 						return &client.InitiateRunResult{
 							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL: "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
 							DefinitionPath: ".mint/mint.yml",
 						}, nil
@@ -113,7 +113,7 @@ var _ = Describe("CLI Service", func() {
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
 						return &client.InitiateRunResult{
 							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL: "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
 							DefinitionPath: ".mint/mint.yml",
 						}, nil
@@ -193,7 +193,7 @@ var _ = Describe("CLI Service", func() {
 						}
 						return &client.InitiateRunResult{
 							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							RunURL: "https://mint.rwx.com/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL: "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
 							DefinitionPath: ".mint/mint.yml",
 						}, nil

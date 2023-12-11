@@ -50,7 +50,7 @@ var (
 				targetedTasks = args
 			}
 
-			initParams, err := parseInitParameters(InitParameters)
+			initParams, err := ParseInitParameters(InitParameters)
 			if err != nil {
 				return errors.Wrap(err, "unable to parse init parameters")
 			}
@@ -92,6 +92,12 @@ var (
 )
 
 func init() {
+	// A different host can only be set over the environment
+	mintHost = os.Getenv("MINT_HOST")
+	if mintHost == "" {
+		mintHost = "cloud.rwx.com"
+	}
+
 	runCmd.Flags().BoolVar(&NoCache, "no-cache", false, "do not read or write to the cache")
 	runCmd.Flags().StringArrayVar(&InitParameters, flagInit, []string{}, "initialization parameters for the run, available in the `init` context. Can be specified multiple times")
 	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions")
@@ -102,16 +108,16 @@ func init() {
 
 // parseInitParameters converts a list of `key=value` pairs to a map. It also reads any `MINT_INIT_` variables from the
 // environment
-func parseInitParameters(params []string) (map[string]string, error) {
+func ParseInitParameters(params []string) (map[string]string, error) {
 	parsedParams := make(map[string]string)
 
 	parse := func(p string) error {
 		fields := strings.Split(p, "=")
-		if len(fields) != 2 {
+		if len(fields) < 2 {
 			return errors.Errorf("unable to parse %q", p)
 		}
 
-		parsedParams[fields[0]] = fields[1]
+		parsedParams[fields[0]] = strings.Join(fields[1:], "=")
 		return nil
 	}
 
