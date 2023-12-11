@@ -47,7 +47,7 @@ func init() {
 	// A different host can only be set over the environment
 	mintHost = os.Getenv("MINT_HOST")
 	if mintHost == "" {
-		mintHost = "mint.rwx.com"
+		mintHost = "cloud.rwx.com"
 	}
 
 	rootCmd.PersistentFlags().StringVar(&AccessToken, "access-token", os.Getenv("RWX_ACCESS_TOKEN"), "the access token for Mint")
