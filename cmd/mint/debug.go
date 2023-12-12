@@ -15,7 +15,7 @@ var debugCmd = &cobra.Command{
 		return service.DebugTask(cli.DebugTaskConfig{RunURL: args[0]})
 	},
 	Short: "Debug a task on Mint",
-	Use:   "debug [flags] --user-access-token=<token> [runURL]",
+	Use:   "debug [flags] [runURL]",
 }
 
 func init() {
