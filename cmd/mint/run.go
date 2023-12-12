@@ -42,7 +42,7 @@ var (
 				}
 			}
 
-			return nil
+			return requireAccessToken()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var targetedTasks []string
@@ -87,7 +87,7 @@ var (
 
 		},
 		Short: "Start a new run on Mint",
-		Use:   "run [flags] --access-token=<token> [task]",
+		Use:   "run [flags] [task]",
 	}
 )
 
