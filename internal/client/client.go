@@ -41,7 +41,7 @@ func (c Client) GetDebugConnectionInfo(runID string) (DebugConnectionInfo, error
 		return connectionInfo, errors.New("missing runID")
 	}
 
-	endpoint := fmt.Sprintf("/api/runs/%s/debug_connection_info", runID)
+	endpoint := fmt.Sprintf("/mint/api/runs/%s/debug_connection_info", runID)
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return connectionInfo, errors.Wrap(err, "unable to create new HTTP request")
