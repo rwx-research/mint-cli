@@ -2,7 +2,6 @@ package cli
 
 import (
 	"github.com/rwx-research/mint-cli/internal/client"
-	"github.com/rwx-research/mint-cli/internal/fs"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -10,11 +9,8 @@ import (
 type APIClient interface {
 	GetDebugConnectionInfo(runID string) (client.DebugConnectionInfo, error)
 	InitiateRun(client.InitiateRunConfig) (*client.InitiateRunResult, error)
-}
-
-type FileSystem interface {
-	Open(name string) (fs.File, error)
-	ReadDir(name string) ([]fs.DirEntry, error)
+	ObtainAuthCode(client.ObtainAuthCodeConfig) (*client.ObtainAuthCodeResult, error)
+	AcquireToken(tokenUrl string) (*client.AcquireTokenResult, error)
 }
 
 type SSHClient interface {

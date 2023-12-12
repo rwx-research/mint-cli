@@ -3,11 +3,12 @@ package cli_test
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/pkg/errors"
 
 	"fmt"
-	"io"
 	"strings"
 
+	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/rwx-research/mint-cli/internal/client"
 	"github.com/rwx-research/mint-cli/internal/fs"
@@ -61,7 +62,8 @@ var _ = Describe("CLI Service", func() {
 
 				mockFS.MockOpen = func(name string) (fs.File, error) {
 					Expect(name).To(Equal("mint.yml"))
-					return io.NopCloser(strings.NewReader(originalFileContent)), nil
+					file := mocks.NewFile(originalFileContent)
+					return file, nil
 				}
 				mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
 					Expect(cfg.TaskDefinitions).To(HaveLen(1))
@@ -167,7 +169,8 @@ var _ = Describe("CLI Service", func() {
 						return []fs.DirEntry{file}, nil
 					}
 					mockFS.MockOpen = func(path string) (fs.File, error) {
-						return io.NopCloser(strings.NewReader(originalFileContent)), nil
+						file := mocks.NewFile(originalFileContent)
+						return file, nil
 					}
 				})
 
@@ -211,7 +214,8 @@ var _ = Describe("CLI Service", func() {
 					}
 					mockFS.MockOpen = func(path string) (fs.File, error) {
 						Expect(originalFileContents).To(HaveKey(path))
-						return io.NopCloser(strings.NewReader(originalFileContents[path])), nil
+						file := mocks.NewFile(originalFileContents[path])
+						return file, nil
 					}
 				})
 
@@ -298,6 +302,332 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 		It("starts an interactive SSH session", func() {
 			Expect(interactiveSSHSessionStarted).To(BeTrue())
+		})
+	})
+
+	Describe("logging in", func() {
+		var (
+			tokenBackend accesstoken.Backend
+			stdout       strings.Builder
+		)
+
+		BeforeEach(func() {
+			var err error
+			tokenBackend, err = accesstoken.NewMemoryBackend()
+			Expect(err).NotTo(HaveOccurred())
+
+			stdout = strings.Builder{}
+		})
+
+		Context("when unable to obtain an auth code", func() {
+			BeforeEach(func() {
+				mockClient.MockObtainAuthCode = func(oacc client.ObtainAuthCodeConfig) (*client.ObtainAuthCodeResult, error) {
+					Expect(oacc.Code.DeviceName).To(Equal("some-device"))
+					return nil, errors.New("error in obtain auth code")
+				}
+			})
+
+			It("returns an error", func() {
+				err := service.Login(cli.LoginConfig{
+					DeviceName:         "some-device",
+					AccessTokenBackend: tokenBackend,
+					Stdout:             &stdout,
+					OpenUrl: func(url string) error {
+						Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+						return nil
+					},
+				})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error in obtain auth code"))
+			})
+		})
+
+		Context("with an auth code created", func() {
+			BeforeEach(func() {
+				mockClient.MockObtainAuthCode = func(oacc client.ObtainAuthCodeConfig) (*client.ObtainAuthCodeResult, error) {
+					Expect(oacc.Code.DeviceName).To(Equal("some-device"))
+					return &client.ObtainAuthCodeResult{
+						AuthorizationUrl: "https://cloud.local/_/auth/code?code=your-code",
+						TokenUrl:         "https://cloud.local/api/auth/codes/code-uuid/token",
+					}, nil
+				}
+			})
+
+			Context("when polling results in authorized", func() {
+				BeforeEach(func() {
+					pollCounter := 0
+					mockClient.MockAcquireToken = func(tokenUrl string) (*client.AcquireTokenResult, error) {
+						Expect(tokenUrl).To(Equal("https://cloud.local/api/auth/codes/code-uuid/token"))
+
+						if pollCounter > 1 {
+							pollCounter++
+							return &client.AcquireTokenResult{State: "authorized", Token: "your-token"}, nil
+						} else {
+							pollCounter++
+							return &client.AcquireTokenResult{State: "pending"}, nil
+						}
+					}
+				})
+
+				It("does not error", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("stores the token", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					token, err := tokenBackend.Get()
+					Expect(err).NotTo(HaveOccurred())
+					Expect(token).To(Equal("your-token"))
+				})
+
+				It("indicates success and help in case the browser does not open", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(stdout.String()).To(ContainSubstring("Authorized!"))
+				})
+
+				It("attempts to open the authorization URL, but doesn't care if it fails", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return errors.New("couldn't open it")
+						},
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(stdout.String()).To(ContainSubstring("Authorized!"))
+				})
+			})
+
+			Context("when polling results in consumed", func() {
+				BeforeEach(func() {
+					pollCounter := 0
+					mockClient.MockAcquireToken = func(tokenUrl string) (*client.AcquireTokenResult, error) {
+						Expect(tokenUrl).To(Equal("https://cloud.local/api/auth/codes/code-uuid/token"))
+
+						if pollCounter > 1 {
+							pollCounter++
+							return &client.AcquireTokenResult{State: "consumed"}, nil
+						} else {
+							pollCounter++
+							return &client.AcquireTokenResult{State: "pending"}, nil
+						}
+					}
+				})
+
+				It("errors", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("already been used"))
+				})
+
+				It("does not store the token", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+					Expect(err).To(HaveOccurred())
+
+					token, err := tokenBackend.Get()
+					Expect(err).NotTo(HaveOccurred())
+					Expect(token).To(Equal(""))
+				})
+
+				It("does not indicate success, but still helps in case the browser does not open", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+					Expect(err).To(HaveOccurred())
+
+					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(stdout.String()).NotTo(ContainSubstring("Authorized!"))
+				})
+			})
+
+			Context("when polling results in expired", func() {
+				BeforeEach(func() {
+					pollCounter := 0
+					mockClient.MockAcquireToken = func(tokenUrl string) (*client.AcquireTokenResult, error) {
+						Expect(tokenUrl).To(Equal("https://cloud.local/api/auth/codes/code-uuid/token"))
+
+						if pollCounter > 1 {
+							pollCounter++
+							return &client.AcquireTokenResult{State: "expired"}, nil
+						} else {
+							pollCounter++
+							return &client.AcquireTokenResult{State: "pending"}, nil
+						}
+					}
+				})
+
+				It("errors", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("has expired"))
+				})
+
+				It("does not store the token", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+					Expect(err).To(HaveOccurred())
+
+					token, err := tokenBackend.Get()
+					Expect(err).NotTo(HaveOccurred())
+					Expect(token).To(Equal(""))
+				})
+
+				It("does not indicate success, but still helps in case the browser does not open", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+					Expect(err).To(HaveOccurred())
+
+					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(stdout.String()).NotTo(ContainSubstring("Authorized!"))
+				})
+			})
+
+			Context("when polling results in something else", func() {
+				BeforeEach(func() {
+					pollCounter := 0
+					mockClient.MockAcquireToken = func(tokenUrl string) (*client.AcquireTokenResult, error) {
+						Expect(tokenUrl).To(Equal("https://cloud.local/api/auth/codes/code-uuid/token"))
+
+						if pollCounter > 1 {
+							pollCounter++
+							return &client.AcquireTokenResult{State: "unexpected-state-here-uh-oh"}, nil
+						} else {
+							pollCounter++
+							return &client.AcquireTokenResult{State: "pending"}, nil
+						}
+					}
+				})
+
+				It("errors", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("is in an unexpected state"))
+				})
+
+				It("does not store the token", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+					Expect(err).To(HaveOccurred())
+
+					token, err := tokenBackend.Get()
+					Expect(err).NotTo(HaveOccurred())
+					Expect(token).To(Equal(""))
+				})
+
+				It("does not indicate success, but still helps in case the browser does not open", func() {
+					err := service.Login(cli.LoginConfig{
+						DeviceName:         "some-device",
+						AccessTokenBackend: tokenBackend,
+						Stdout:             &stdout,
+						OpenUrl: func(url string) error {
+							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
+							return nil
+						},
+					})
+					Expect(err).To(HaveOccurred())
+
+					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(stdout.String()).NotTo(ContainSubstring("Authorized!"))
+				})
+			})
 		})
 	})
 })
