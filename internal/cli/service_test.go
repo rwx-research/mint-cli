@@ -12,6 +12,8 @@ import (
 	"github.com/rwx-research/mint-cli/internal/client"
 	"github.com/rwx-research/mint-cli/internal/fs"
 	"github.com/rwx-research/mint-cli/internal/mocks"
+
+	"golang.org/x/crypto/ssh"
 )
 
 var _ = Describe("CLI Service", func() {
@@ -20,15 +22,18 @@ var _ = Describe("CLI Service", func() {
 		service    cli.Service
 		mockClient *mocks.Client
 		mockFS     *mocks.FileSystem
+		mockSSH    *mocks.SSH
 	)
 
 	BeforeEach(func() {
 		mockClient = new(mocks.Client)
 		mockFS = new(mocks.FileSystem)
+		mockSSH = new(mocks.SSH)
 
 		config = cli.Config{
-			Client:     mockClient,
+			APIClient:  mockClient,
 			FileSystem: mockFS,
+			SSHClient:  mockSSH,
 		}
 	})
 
@@ -64,10 +69,10 @@ var _ = Describe("CLI Service", func() {
 					Expect(cfg.UseCache).To(BeTrue())
 					receivedFileContent = cfg.TaskDefinitions[0].FileContents
 					return &client.InitiateRunResult{
-						RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-						RunURL: "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+						RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+						RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 						TargetedTaskKeys: []string{},
-						DefinitionPath: ".mint/mint.yml",
+						DefinitionPath:   ".mint/mint.yml",
 					}, nil
 				}
 			})
@@ -91,10 +96,10 @@ var _ = Describe("CLI Service", func() {
 						Expect(cfg.UseCache).To(BeFalse())
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
 						return &client.InitiateRunResult{
-							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							RunURL: "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
-							DefinitionPath: ".mint/mint.yml",
+							DefinitionPath:   ".mint/mint.yml",
 						}, nil
 					}
 				})
@@ -112,10 +117,10 @@ var _ = Describe("CLI Service", func() {
 						Expect(cfg.TargetedTaskKeys).To(Equal([]string{fmt.Sprintf("%d", GinkgoRandomSeed())}))
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
 						return &client.InitiateRunResult{
-							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							RunURL: "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
-							DefinitionPath: ".mint/mint.yml",
+							DefinitionPath:   ".mint/mint.yml",
 						}, nil
 					}
 				})
@@ -192,10 +197,10 @@ var _ = Describe("CLI Service", func() {
 							receivedFileContents[def.Path] = def.FileContents
 						}
 						return &client.InitiateRunResult{
-							RunId: "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							RunURL: "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
-							DefinitionPath: ".mint/mint.yml",
+							DefinitionPath:   ".mint/mint.yml",
 						}, nil
 					}
 					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
@@ -227,6 +232,72 @@ var _ = Describe("CLI Service", func() {
 					Expect(receivedFileContents).ToNot(HaveKey("test/directory.yaml"))
 				})
 			})
+		})
+	})
+
+	Describe("debugging a task", func() {
+		const (
+			// The CLI will validate key material before connecting over SSH, hence we need some "real" keys here
+			privateTestKey = `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACDiyT6ht8Z2XBEJpLR4/xmNouq5KDdn5G++cUcTH4EhzwAAAJhIWxlBSFsZ
+QQAAAAtzc2gtZWQyNTUxOQAAACDiyT6ht8Z2XBEJpLR4/xmNouq5KDdn5G++cUcTH4Ehzw
+AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
+6rkoN2fkb75xRxMfgSHPAAAAEG1pbnQgQ0xJIHRlc3RpbmcBAgMEBQ==
+-----END OPENSSH PRIVATE KEY-----`
+			publicTestKey = `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOLJPqG3xnZcEQmktHj/GY2i6rkoN2fkb75xRxMfgSHP mint CLI testing`
+		)
+
+		var (
+			debugConfig                                                          cli.DebugTaskConfig
+			agentAddress, runID                                                  string
+			connectedViaSSH, fetchedConnectionInfo, interactiveSSHSessionStarted bool
+		)
+
+		BeforeEach(func() {
+			agentAddress = fmt.Sprintf("%d.example.org:1234", GinkgoRandomSeed())
+			connectedViaSSH = false
+			fetchedConnectionInfo = false
+			interactiveSSHSessionStarted = false
+			runID = fmt.Sprintf("run-%d", GinkgoRandomSeed())
+
+			debugConfig = cli.DebugTaskConfig{
+				RunURL: fmt.Sprintf("https://cloud.rwx.com/mint/rwx/runs/%s", runID),
+			}
+
+			mockClient.MockGetDebugConnectionInfo = func(runId string) (client.DebugConnectionInfo, error) {
+				Expect(runID).To(Equal(runId))
+				fetchedConnectionInfo = true
+				// Note: This is returning a matching private & public key. The real API returns different ones
+				return client.DebugConnectionInfo{PrivateUserKey: privateTestKey, PublicHostKey: publicTestKey, Address: agentAddress}, nil
+			}
+
+			mockSSH.MockConnect = func(addr string, _ ssh.ClientConfig) error {
+				Expect(addr).To(Equal(agentAddress))
+				connectedViaSSH = true
+				return nil
+			}
+
+			mockSSH.MockInteractiveSession = func() error {
+				interactiveSSHSessionStarted = true
+				return nil
+			}
+		})
+
+		JustBeforeEach(func() {
+			Expect(service.DebugTask(debugConfig)).To(Succeed())
+		})
+
+		It("fetches the connection info from the API", func() {
+			Expect(fetchedConnectionInfo).To(BeTrue())
+		})
+
+		It("connects to the agent over SSH", func() {
+			Expect(connectedViaSSH).To(BeTrue())
+		})
+
+		It("starts an interactive SSH session", func() {
+			Expect(interactiveSSHSessionStarted).To(BeTrue())
 		})
 	})
 })

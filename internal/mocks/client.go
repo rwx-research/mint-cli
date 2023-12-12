@@ -7,7 +7,8 @@ import (
 )
 
 type Client struct {
-	MockInitiateRun func(client.InitiateRunConfig) (*client.InitiateRunResult, error)
+	MockInitiateRun            func(client.InitiateRunConfig) (*client.InitiateRunResult, error)
+	MockGetDebugConnectionInfo func(runID string) (client.DebugConnectionInfo, error)
 }
 
 func (c *Client) InitiateRun(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
@@ -16,4 +17,12 @@ func (c *Client) InitiateRun(cfg client.InitiateRunConfig) (*client.InitiateRunR
 	}
 
 	return nil, errors.New("MockInitiateRun was not configured")
+}
+
+func (c *Client) GetDebugConnectionInfo(runID string) (client.DebugConnectionInfo, error) {
+	if c.MockGetDebugConnectionInfo != nil {
+		return c.MockGetDebugConnectionInfo(runID)
+	}
+
+	return client.DebugConnectionInfo{}, errors.New("MockGetDebugConnectionInfo was not configured")
 }

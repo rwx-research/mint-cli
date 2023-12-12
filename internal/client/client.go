@@ -34,6 +34,41 @@ func New(cfg Config) (Client, error) {
 	return Client{roundTrip}, nil
 }
 
+func (c Client) GetDebugConnectionInfo(runID string) (DebugConnectionInfo, error) {
+	connectionInfo := DebugConnectionInfo{}
+
+	if runID == "" {
+		return connectionInfo, errors.New("missing runID")
+	}
+
+	endpoint := fmt.Sprintf("/mint/api/runs/%s/debug_connection_info", runID)
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return connectionInfo, errors.Wrap(err, "unable to create new HTTP request")
+	}
+
+	resp, err := c.RoundTrip(req)
+	if err != nil {
+		return connectionInfo, errors.Wrap(err, "HTTP request failed")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		msg := extractErrorMessage(resp.Body)
+		if msg == "" {
+			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
+		}
+
+		return connectionInfo, errors.New(msg)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&connectionInfo); err != nil {
+		return connectionInfo, errors.Wrap(err, "unable to parse API response")
+	}
+
+	return connectionInfo, nil
+}
+
 // InitiateRun sends a request to Mint for starting a new run
 func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	endpoint := "/mint/api/runs"

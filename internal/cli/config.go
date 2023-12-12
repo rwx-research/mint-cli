@@ -3,17 +3,34 @@ package cli
 import "github.com/pkg/errors"
 
 type Config struct {
-	Client     MintClient
+	APIClient  APIClient
 	FileSystem FileSystem
+	SSHClient  SSHClient
 }
 
 func (c Config) Validate() error {
-	if c.Client == nil {
+	if c.APIClient == nil {
 		return errors.New("missing Mint client")
 	}
 
 	if c.FileSystem == nil {
 		return errors.New("missing file-system interface")
+	}
+
+	if c.SSHClient == nil {
+		return errors.New("missing SSH client constructor")
+	}
+
+	return nil
+}
+
+type DebugTaskConfig struct {
+	RunURL string
+}
+
+func (c DebugTaskConfig) Validate() error {
+	if c.RunURL == "" {
+		return errors.New("missing Mint run URL")
 	}
 
 	return nil

@@ -3,13 +3,18 @@ module github.com/rwx-research/mint-cli
 go 1.20
 
 require (
+	github.com/kopoli/go-terminal-size v0.0.0-20170219200355-5c97524c8b54
 	github.com/magefile/mage v1.15.0
 	github.com/onsi/ginkgo/v2 v2.13.1
 	github.com/onsi/gomega v1.29.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.8.0
+	golang.org/x/crypto v0.14.0
+	golang.org/x/term v0.13.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+require github.com/mattn/go-isatty v0.0.20 // indirect
 
 require (
 	github.com/go-logr/logr v1.3.0 // indirect

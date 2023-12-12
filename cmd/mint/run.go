@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/rwx-research/mint-cli/internal/cli"
-	"github.com/rwx-research/mint-cli/internal/client"
-	"github.com/rwx-research/mint-cli/internal/fs"
 
 	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
@@ -18,7 +16,6 @@ import (
 const flagInit = "init"
 
 var (
-	AccessToken    string
 	InitParameters []string
 	Json           bool
 	MintDirectory  string
@@ -26,21 +23,8 @@ var (
 	NoCache        bool
 	Open           bool
 
-	mintHost string
-	service  cli.Service
-
 	runCmd = &cobra.Command{
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			c, err := client.New(client.Config{AccessToken: AccessToken, Host: mintHost})
-			if err != nil {
-				return errors.Wrap(err, "unable to initialize API client")
-			}
-
-			service, err = cli.NewService(cli.Config{Client: c, FileSystem: fs.Local{}})
-			if err != nil {
-				return errors.Wrap(err, "unable to initialize CLI")
-			}
-
 			for _, arg := range args {
 				if strings.Contains(arg, "=") {
 					initParam := strings.Split(arg, "=")[0]
@@ -117,7 +101,6 @@ func init() {
 	runCmd.Flags().BoolVar(&NoCache, "no-cache", false, "do not read or write to the cache")
 	runCmd.Flags().StringArrayVar(&InitParameters, flagInit, []string{}, "initialization parameters for the run, available in the `init` context. Can be specified multiple times")
 	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions")
-	runCmd.Flags().StringVar(&AccessToken, "access-token", os.Getenv("RWX_ACCESS_TOKEN"), "the access token for Mint")
 	runCmd.Flags().StringVar(&MintDirectory, "dir", ".mint", "the directory containing your mint task definitions. By default, this is used to source task definitions")
 	runCmd.Flags().BoolVar(&Open, "open", false, "open the run in a browser")
 	runCmd.Flags().BoolVar(&Json, "json", false, "output json data to stdout")
