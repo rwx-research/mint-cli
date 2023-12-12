@@ -1,0 +1,43 @@
+on:
+  github:
+    push:
+      init:
+        branch: ${{ mint.run.git.branch }}
+        commit-sha: ${{ event.github.push.head_commit.id }}
+        commit-message: ${{ event.github.push.head_commit.message }}
+        username: ${{ event.github.push.pusher.name }}
+
+concurrency-pools:
+  - id: rwx-research/mint-cli/bigtest:${{ init.branch }}
+    if: ${{ init.branch != "main" }}
+    capacity: 1
+    on-overflow: cancel-running
+
+tasks:
+  - key: clone
+    call: mint/checkout
+    with:
+      repository: git@github.com:rwx-research/mint.git
+      ref: main
+      ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_REPO }}
+  - key: setup-node
+    use: clone
+    call: mint/setup-node
+    with:
+      node-version-file: .node-version
+    filter:
+      - .node-version
+  - key: install-yaml
+    use:
+      key: setup-node
+      exact-filesystem: true
+    run: npm install -g yaml
+  - key: generate-bigtest
+    use: install-yaml
+    run: NODE_PATH=$(npm root -g) node .mint/generate-bigtest-tasks.js >> "${MINT_DYNAMIC_TASKS}/tasks.yml"
+    env:
+      MINT_REF: main
+      CLOUD_REF: main
+      CLI_REF: ${{ init.commit-sha }}
+    filter:
+      - .mint/generate-bigtest-tasks.js
