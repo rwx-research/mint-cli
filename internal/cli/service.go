@@ -5,7 +5,10 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/briandowns/spinner"
+	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/client"
 
 	"github.com/pkg/errors"
@@ -119,6 +122,69 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*client.InitiateRunResult, 
 	}
 
 	return runResult, nil
+}
+
+// InitiateRun will connect to the Cloud API and start a new run in Mint.
+func (s Service) Login(cfg LoginConfig) error {
+	err := cfg.Validate()
+	if err != nil {
+		return errors.Wrap(err, "validation failed")
+	}
+
+	authCodeResult, err := s.APIClient.ObtainAuthCode(client.ObtainAuthCodeConfig{
+		Code: client.ObtainAuthCodeCode{
+			DeviceName: cfg.DeviceName,
+		},
+	})
+	if err != nil {
+		return errors.Wrap(err, "unable to obtain an auth code")
+	}
+
+	// we print a nice message to handle the case where opening the browser fails, so we ignore this error
+	cfg.OpenUrl(authCodeResult.AuthorizationUrl) //nolint:errcheck
+
+	fmt.Fprintln(cfg.Stdout)
+	fmt.Fprintln(cfg.Stdout, "To authorize this device, you'll need to login to RWX Cloud and choose an organization.")
+	fmt.Fprintln(cfg.Stdout, "Your browser should automatically open. If it does not, you can visit this URL:")
+	fmt.Fprintln(cfg.Stdout)
+	fmt.Fprintf(cfg.Stdout, "\t%v\n", authCodeResult.AuthorizationUrl)
+	fmt.Fprintln(cfg.Stdout)
+	fmt.Fprintln(cfg.Stdout, "Once authorized, a personal access token will be generated and stored securely on this device.")
+	fmt.Fprintln(cfg.Stdout)
+
+	indicator := spinner.New(spinner.CharSets[11], 100*time.Millisecond, spinner.WithWriter(cfg.Stdout))
+	indicator.Suffix = " Waiting for authorization..."
+	indicator.Start()
+
+	for {
+		tokenResult, err := s.APIClient.AcquireToken(authCodeResult.TokenUrl)
+		if err != nil {
+			indicator.Stop()
+			return errors.Wrap(err, "unable to acquire the token")
+		}
+
+		switch tokenResult.State {
+		case "consumed":
+			indicator.Stop()
+			return errors.New("The code has already been used. Try again.")
+		case "expired":
+			indicator.Stop()
+			return errors.New("The code has expired. Try again.")
+		case "authorized":
+			indicator.Stop()
+			if tokenResult.Token == "" {
+				return errors.New("The code has been authorized, but there is no token. You can try again, but this is likely an issue with RWX Cloud. Please reach out at support@rwx.com.")
+			} else {
+				fmt.Fprint(cfg.Stdout, "Authorized!\n")
+				return accesstoken.Set(cfg.AccessTokenBackend, tokenResult.Token)
+			}
+		case "pending":
+			time.Sleep(1 * time.Second)
+		default:
+			indicator.Stop()
+			return errors.New("The code is in an unexpected state. You can try again, but this is likely an issue with RWX Cloud. Please reach out at support@rwx.com.")
+		}
+	}
 }
 
 // taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.

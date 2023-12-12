@@ -87,17 +87,11 @@ var (
 
 		},
 		Short: "Start a new run on Mint",
-		Use:   "run [flags] --user-access-token=<token> [task]",
+		Use:   "run [flags] --access-token=<token> [task]",
 	}
 )
 
 func init() {
-	// A different host can only be set over the environment
-	mintHost = os.Getenv("MINT_HOST")
-	if mintHost == "" {
-		mintHost = "cloud.rwx.com"
-	}
-
 	runCmd.Flags().BoolVar(&NoCache, "no-cache", false, "do not read or write to the cache")
 	runCmd.Flags().StringArrayVar(&InitParameters, flagInit, []string{}, "initialization parameters for the run, available in the `init` context. Can be specified multiple times")
 	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions")

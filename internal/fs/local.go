@@ -8,6 +8,15 @@ import (
 
 type Local struct{}
 
+func (l Local) Create(name string) (File, error) {
+	fd, err := os.Create(name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to create %q", name)
+	}
+
+	return fd, nil
+}
+
 func (l Local) Open(name string) (File, error) {
 	fd, err := os.Open(name)
 	if err != nil {
@@ -29,4 +38,8 @@ func (l Local) ReadDir(name string) ([]DirEntry, error) {
 	}
 
 	return entries, nil
+}
+
+func (l Local) MkdirAll(path string) error {
+	return os.MkdirAll(path, os.ModePerm)
 }

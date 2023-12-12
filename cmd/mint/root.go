@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/rwx-research/mint-cli/cmd/mint/config"
+	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/rwx-research/mint-cli/internal/client"
 	"github.com/rwx-research/mint-cli/internal/fs"
@@ -17,8 +19,9 @@ var (
 	AccessToken string
 	Debug       bool
 
-	mintHost string
-	service  cli.Service
+	mintHost           string
+	service            cli.Service
+	accessTokenBackend accesstoken.Backend
 
 	// rootCmd represents the main `mint` command
 	rootCmd = &cobra.Command{
@@ -28,12 +31,20 @@ var (
 		SilenceUsage:  true,
 		Version:       config.Version,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			c, err := client.New(client.Config{AccessToken: AccessToken, Host: mintHost})
+			filesystem := fs.Local{}
+
+			var err error
+			accessTokenBackend, err = accesstoken.NewFileBackend(fmt.Sprintf("~%v.mint", string(os.PathSeparator)), filesystem)
+			if err != nil {
+				return errors.Wrap(err, "unable to initialize access token backend")
+			}
+
+			c, err := client.New(client.Config{AccessToken: AccessToken, Host: mintHost, AccessTokenBackend: accessTokenBackend})
 			if err != nil {
 				return errors.Wrap(err, "unable to initialize API client")
 			}
 
-			service, err = cli.NewService(cli.Config{APIClient: c, FileSystem: fs.Local{}, SSHClient: new(ssh.Client)})
+			service, err = cli.NewService(cli.Config{APIClient: c, FileSystem: filesystem, SSHClient: new(ssh.Client)})
 			if err != nil {
 				return errors.Wrap(err, "unable to initialize CLI")
 			}
@@ -56,4 +67,5 @@ func init() {
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(debugCmd)
+	rootCmd.AddCommand(loginCmd)
 }

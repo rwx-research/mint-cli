@@ -2,18 +2,16 @@ package client
 
 import (
 	"github.com/pkg/errors"
+	"github.com/rwx-research/mint-cli/internal/accesstoken"
 )
 
 type Config struct {
-	Host        string
-	AccessToken string
+	Host               string
+	AccessToken        string
+	AccessTokenBackend accesstoken.Backend
 }
 
 func (c Config) Validate() error {
-	if c.AccessToken == "" {
-		return errors.New("missing access-token")
-	}
-
 	if c.Host == "" {
 		return errors.New("missing host")
 	}
@@ -41,4 +39,30 @@ func (c InitiateRunConfig) Validate() error {
 	}
 
 	return nil
+}
+
+type ObtainAuthCodeConfig struct {
+	Code ObtainAuthCodeCode `json:"code"`
+}
+
+type ObtainAuthCodeCode struct {
+	DeviceName string `json:"device_name"`
+}
+
+type ObtainAuthCodeResult struct {
+	AuthorizationUrl string `json:"authorization_url"`
+	TokenUrl         string `json:"token_url"`
+}
+
+func (c ObtainAuthCodeConfig) Validate() error {
+	if c.Code.DeviceName == "" {
+		return errors.New("device name must be provided")
+	}
+
+	return nil
+}
+
+type AcquireTokenResult struct {
+	State string `json:"state"` // consumed, expired, authorized, pending
+	Token string `json:"token,omitempty"`
 }
