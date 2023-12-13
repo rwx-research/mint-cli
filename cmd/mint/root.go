@@ -8,10 +8,10 @@ import (
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/rwx-research/mint-cli/internal/client"
+	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/fs"
 	"github.com/rwx-research/mint-cli/internal/ssh"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 

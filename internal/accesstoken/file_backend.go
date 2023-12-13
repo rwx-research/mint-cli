@@ -10,7 +10,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/fs"
 )
 

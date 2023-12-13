@@ -2,8 +2,7 @@ package mocks
 
 import (
 	"github.com/rwx-research/mint-cli/internal/client"
-
-	"github.com/pkg/errors"
+	"github.com/rwx-research/mint-cli/internal/errors"
 )
 
 type Client struct {

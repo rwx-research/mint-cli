@@ -10,8 +10,8 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/client"
+	"github.com/rwx-research/mint-cli/internal/errors"
 
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
@@ -92,6 +92,18 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*client.InitiateRunResult, 
 	if cfg.MintFilePath == "" {
 		paths, err = s.yamlFilePathsInDirectory(cfg.MintDirectory)
 		if err != nil {
+			if errors.Is(err, errors.ErrFileNotExists) {
+				errMsg := "No run definitions provided!"
+
+				if cfg.MintDirectory != ".mint" {
+					errMsg = fmt.Sprintf("%s You specified --dir %s but the directory %s could not be found", errMsg, cfg.MintDirectory, cfg.MintDirectory)
+				} else {
+					errMsg = fmt.Sprintf("%s Add a run definition to your .mint directory, or use --file", errMsg)
+				}
+
+				return nil, errors.New(errMsg)
+			}
+
 			return nil, errors.Wrap(err, "unable to find yaml files in directory")
 		}
 	}

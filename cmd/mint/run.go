@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/rwx-research/mint-cli/internal/cli"
+	"github.com/rwx-research/mint-cli/internal/errors"
 
-	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
 	"github.com/spf13/cobra"
 )

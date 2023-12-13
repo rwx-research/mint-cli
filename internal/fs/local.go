@@ -3,7 +3,7 @@ package fs
 import (
 	"os"
 
-	"github.com/pkg/errors"
+	"github.com/rwx-research/mint-cli/internal/errors"
 )
 
 type Local struct{}

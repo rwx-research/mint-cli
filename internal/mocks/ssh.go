@@ -1,9 +1,9 @@
 package mocks
 
 import (
-	"golang.org/x/crypto/ssh"
+	"github.com/rwx-research/mint-cli/internal/errors"
 
-	"github.com/pkg/errors"
+	"golang.org/x/crypto/ssh"
 )
 
 type SSH struct {

@@ -7,10 +7,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/pkg/errors"
-
 	"github.com/rwx-research/mint-cli/cmd/mint/config"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
+	"github.com/rwx-research/mint-cli/internal/errors"
 )
 
 // Client is an API Client for Mint
