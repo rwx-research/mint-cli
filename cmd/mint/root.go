@@ -6,8 +6,8 @@ import (
 
 	"github.com/rwx-research/mint-cli/cmd/mint/config"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
+	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/cli"
-	"github.com/rwx-research/mint-cli/internal/client"
 	"github.com/rwx-research/mint-cli/internal/fs"
 	"github.com/rwx-research/mint-cli/internal/ssh"
 
@@ -39,7 +39,7 @@ var (
 				return errors.Wrap(err, "unable to initialize access token backend")
 			}
 
-			c, err := client.New(client.Config{AccessToken: AccessToken, Host: mintHost, AccessTokenBackend: accessTokenBackend})
+			c, err := api.NewClient(api.Config{AccessToken: AccessToken, Host: mintHost, AccessTokenBackend: accessTokenBackend})
 			if err != nil {
 				return errors.Wrap(err, "unable to initialize API client")
 			}

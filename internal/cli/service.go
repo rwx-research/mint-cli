@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
-	"github.com/rwx-research/mint-cli/internal/client"
+	"github.com/rwx-research/mint-cli/internal/api"
 
+	"github.com/briandowns/spinner"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
@@ -81,7 +81,7 @@ func (s Service) DebugTask(cfg DebugTaskConfig) error {
 }
 
 // InitiateRun will connect to the Cloud API and start a new run in Mint.
-func (s Service) InitiateRun(cfg InitiateRunConfig) (*client.InitiateRunResult, error) {
+func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, error) {
 	err := cfg.Validate()
 	if err != nil {
 		return nil, errors.Wrap(err, "validation failed")
@@ -111,7 +111,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*client.InitiateRunResult, 
 		}
 	}
 
-	runResult, err := s.APIClient.InitiateRun(client.InitiateRunConfig{
+	runResult, err := s.APIClient.InitiateRun(api.InitiateRunConfig{
 		InitializationParameters: cfg.InitParameters,
 		TaskDefinitions:          taskDefinitions,
 		TargetedTaskKeys:         cfg.TargetedTasks,
@@ -131,8 +131,8 @@ func (s Service) Login(cfg LoginConfig) error {
 		return errors.Wrap(err, "validation failed")
 	}
 
-	authCodeResult, err := s.APIClient.ObtainAuthCode(client.ObtainAuthCodeConfig{
-		Code: client.ObtainAuthCodeCode{
+	authCodeResult, err := s.APIClient.ObtainAuthCode(api.ObtainAuthCodeConfig{
+		Code: api.ObtainAuthCodeCode{
 			DeviceName: cfg.DeviceName,
 		},
 	})
@@ -189,8 +189,8 @@ func (s Service) Login(cfg LoginConfig) error {
 
 // taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.
 // No validation takes place here.
-func (s Service) taskDefinitionsFromPaths(paths []string) ([]client.TaskDefinition, error) {
-	taskDefinitions := make([]client.TaskDefinition, 0)
+func (s Service) taskDefinitionsFromPaths(paths []string) ([]api.TaskDefinition, error) {
+	taskDefinitions := make([]api.TaskDefinition, 0)
 
 	for _, path := range paths {
 		fd, err := s.FileSystem.Open(path)
@@ -204,7 +204,7 @@ func (s Service) taskDefinitionsFromPaths(paths []string) ([]client.TaskDefiniti
 			return nil, errors.Wrapf(err, "error while reading %q", path)
 		}
 
-		taskDefinitions = append(taskDefinitions, client.TaskDefinition{
+		taskDefinitions = append(taskDefinitions, api.TaskDefinition{
 			Path:         path,
 			FileContents: string(fileContent),
 		})
