@@ -8,6 +8,9 @@ import (
 
 var (
 	ErrFileNotExists = os.ErrNotExist
+	ErrBadRequest    = errors.New("bad request")
+	ErrNotFound      = errors.New("not found")
+	ErrGone          = errors.New("gone")
 
 	Errorf    = errors.Errorf
 	Is        = errors.Is
