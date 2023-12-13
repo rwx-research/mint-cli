@@ -18,7 +18,7 @@ tasks:
     call: mint/checkout 0.0.0
     with:
       repository: git@github.com:rwx-research/mint.git
-      ref: main
+      ref: tg-bigtest-deps-3
       ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_REPO }}
   - key: setup-node
     use: clone
@@ -32,12 +32,37 @@ tasks:
       key: setup-node
       exact-filesystem: true
     run: npm install -g yaml
+  - key: install-jq
+    run: |
+      sudo apt-get update
+      sudo apt-get install jq
+  - key: get-task-server-info
+    use: install-jq
+    run: |
+      mint_version=$(curl -H "Authorization: Bearer ${{ secrets.STAGING_ORG_RWX_ACCESS_TOKEN_STAGING }}" --http1.1 "https://staging.cloud.rwx.com/mint/api/remote_configuration" | jq -r ".config.mint_version")
+      data=$(curl -s -H "Authorization: Bearer ${{ secrets.STAGING_TASK_SERVER_ADMIN_ACCESS_TOKEN }}" "https://staging.cloud.rwx.com/mint/testing_api/testing/task_server_info?version=${mint_version}")
+      echo $data | jq -j '.public_url' > $MINT_VALUES/public-url
+      echo $data | jq -j '.logs_access_secret' > $MINT_VALUES/logs-access-secret
+      echo $data | jq -j '.admin_token' > $MINT_VALUES/admin-token
+    outputs:
+      values: [public-url, logs-access-secret, admin-token]
+    env:
+      CACHE_BUSTER: ${{ mint.run.id }}
   - key: generate-bigtest
     use: install-yaml
-    run: NODE_PATH=$(npm root -g) node .mint/generate-bigtest-tasks.js >> "${MINT_DYNAMIC_TASKS}/tasks.yml"
+    run: |
+      NODE_PATH=$(npm root -g) node .mint/generate-bigtest-tasks.js >> "${MINT_DYNAMIC_TASKS}/tasks.yml"
     env:
-      MINT_REF: main
-      CLOUD_REF: main
+      MINT_REF: from-cloud
+      CLOUD_REF: https://staging.cloud.rwx.com
       CLI_REF: ${{ init.commit-sha }}
+      BIGTEST_REF: tg-bigtest-deps-3
+      MINT_SERVER_ADDRESS: ${{ tasks.get-task-server-info.values.public-url }}
+      MINT_SERVER_LOGS_ACCESS_SECRET: ${{ tasks.get-task-server-info.values.logs-access-secret }}
+      MINT_SERVER_ADMIN_ACCESS_TOKEN: ${{ tasks.get-task-server-info.values.admin-token }}
+      MINT_EVENTS_S3_BUCKET: mint-storage-20230713172736323600000001
+      MINT_EVENTS_S3_PREFIX: organizations/2ffff89c-4fc2-429b-bfba-c9d26778cb34/events
+      MINT_EVENTS_S3_KMS_KEY_ID: 02814457-e1c4-4299-a5a3-2814c1318b90
+      MINT_EVENTS_S3_REGION: us-east-2
     filter:
       - .mint/generate-bigtest-tasks.js
