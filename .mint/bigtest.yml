@@ -66,3 +66,15 @@ tasks:
       MINT_EVENTS_S3_REGION: us-east-2
     filter:
       - .mint/generate-bigtest-tasks.js
+  - key: generate-dynamic
+    after: generate-bigtest
+    run: |
+      printf "
+        - key: dynamic
+          use:
+            - pnpm-install-bigtest
+            - build-go-bigtest
+            - install-captain-bigtest
+            - build-mint-cli
+          run: mint-breakpoint
+      " >> $MINT_DYNAMIC_TASKS/tasks.yml
