@@ -3,8 +3,9 @@ package ssh
 import (
 	"os"
 
+	"github.com/rwx-research/mint-cli/internal/errors"
+
 	tsize "github.com/kopoli/go-terminal-size"
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )

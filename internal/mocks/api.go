@@ -2,8 +2,7 @@ package mocks
 
 import (
 	"github.com/rwx-research/mint-cli/internal/api"
-
-	"github.com/pkg/errors"
+	"github.com/rwx-research/mint-cli/internal/errors"
 )
 
 type API struct {

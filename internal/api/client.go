@@ -7,10 +7,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/pkg/errors"
-
 	"github.com/rwx-research/mint-cli/cmd/mint/config"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
+	"github.com/rwx-research/mint-cli/internal/errors"
 )
 
 // Client is an API Client for Mint
@@ -65,13 +64,17 @@ func (c Client) GetDebugConnectionInfo(runID string) (DebugConnectionInfo, error
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		msg := extractErrorMessage(resp.Body)
-		if msg == "" {
-			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
-		}
-
-		return connectionInfo, errors.New(msg)
+	switch resp.StatusCode {
+	case 200:
+		break
+	case 400:
+		return connectionInfo, errors.ErrBadRequest
+	case 404:
+		return connectionInfo, errors.ErrNotFound
+	case 410:
+		return connectionInfo, errors.ErrGone
+	default:
+		return connectionInfo, errors.New(fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&connectionInfo); err != nil {

@@ -5,10 +5,10 @@ import (
 	"os"
 	"os/user"
 
-	"github.com/pkg/errors"
 	"github.com/skratchdot/open-golang/open"
 
 	"github.com/rwx-research/mint-cli/internal/cli"
+	"github.com/rwx-research/mint-cli/internal/errors"
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"

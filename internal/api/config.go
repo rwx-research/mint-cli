@@ -1,8 +1,8 @@
 package api
 
 import (
-	"github.com/pkg/errors"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
+	"github.com/rwx-research/mint-cli/internal/errors"
 )
 
 type Config struct {

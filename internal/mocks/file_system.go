@@ -1,9 +1,8 @@
 package mocks
 
 import (
+	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/fs"
-
-	"github.com/pkg/errors"
 )
 
 type FileSystem struct {
