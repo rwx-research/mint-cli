@@ -11,6 +11,7 @@ type APIClient interface {
 	InitiateRun(api.InitiateRunConfig) (*api.InitiateRunResult, error)
 	ObtainAuthCode(api.ObtainAuthCodeConfig) (*api.ObtainAuthCodeResult, error)
 	AcquireToken(tokenUrl string) (*api.AcquireTokenResult, error)
+	Whoami() (*api.WhoamiResult, error)
 }
 
 type SSHClient interface {

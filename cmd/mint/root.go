@@ -68,4 +68,5 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(debugCmd)
 	rootCmd.AddCommand(loginCmd)
+	rootCmd.AddCommand(whoamiCmd)
 }

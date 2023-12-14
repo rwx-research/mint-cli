@@ -116,4 +116,34 @@ var _ = Describe("API Client", func() {
 			Expect(err).To(BeNil())
 		})
 	})
+
+	Describe("Whoami", func() {
+		It("makes the request", func() {
+			email := "some-email@example.com"
+			body := struct {
+				OrganizationSlug string  `json:"organization_slug"`
+				TokenKind        string  `json:"token_kind"`
+				UserEmail        *string `json:"user_email,omitempty"`
+			}{
+				OrganizationSlug: "some-org",
+				TokenKind:        "personal_access_token",
+				UserEmail:        &email,
+			}
+			bodyBytes, _ := json.Marshal(body)
+
+			roundTrip := func(req *http.Request) (*http.Response, error) {
+				Expect(req.URL.Path).To(Equal("/api/auth/whoami"))
+				return &http.Response{
+					Status:     "200 OK",
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+				}, nil
+			}
+
+			c := api.Client{roundTrip}
+
+			_, err := c.Whoami()
+			Expect(err).To(BeNil())
+		})
+	})
 })

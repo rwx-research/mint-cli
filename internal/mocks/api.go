@@ -10,6 +10,7 @@ type API struct {
 	MockGetDebugConnectionInfo func(runID string) (api.DebugConnectionInfo, error)
 	MockObtainAuthCode         func(api.ObtainAuthCodeConfig) (*api.ObtainAuthCodeResult, error)
 	MockAcquireToken           func(tokenUrl string) (*api.AcquireTokenResult, error)
+	MockWhoami                 func() (*api.WhoamiResult, error)
 }
 
 func (c *API) InitiateRun(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
@@ -42,4 +43,12 @@ func (c *API) AcquireToken(tokenUrl string) (*api.AcquireTokenResult, error) {
 	}
 
 	return nil, errors.New("MockAcquireToken was not configured")
+}
+
+func (c *API) Whoami() (*api.WhoamiResult, error) {
+	if c.MockWhoami != nil {
+		return c.MockWhoami()
+	}
+
+	return nil, errors.New("MockWhoami was not configured")
 }
