@@ -72,3 +72,71 @@ tasks:
         --init "version=UNSTABLE"
     env:
       RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
+  - key: checkout-mint-testing
+    call: mint/checkout 0.0.0
+    with:
+      path: ./mint-testing
+      repository: git@github.com:rwx-research/mint-testing.git
+      ref: main
+      ssh-key: ${{ secrets.SSH_KEY_MINT_TESTING_REPO }}
+  - key: install-jq
+    run: |
+      sudo apt-get update
+      sudo apt-get install jq
+      sudo apt-get clean
+  - key: run-mint-testing-tests
+    use: [checkout-mint-testing, install-jq, build-mint-cli]
+    run: |
+      initiate_run_result=$(./mint run --json --file ./mint-testing/.mint/trigger-integration-test.yml --init spec=mint-login.spec.ts --init ref=main --init cli=${{ init.commit }})
+      echo "${initiate_run_result}"
+      run_id=$(echo "${initiate_run_result}" | jq -r ".RunId")
+
+      while true; do
+        response=$(curl -H "Authorization: Bearer ${RWX_ACCESS_TOKEN}" -s -o response.json --http1.1 -w "%{http_code}" "https://cloud.rwx.com/mint/api/runs/${run_id}")
+
+        if [ "$response" -ne 200 ]; then
+          echo "Error: Cloud server returned unexpected status ${response} when polling run"
+          exit 1
+        fi
+
+        execution_status=$(jq -r .run_status.execution response.json)
+        result_status=$(jq -r .run_status.result response.json)
+
+        echo "Execution status: ${execution_status}"
+        echo "Result status: ${result_status}"
+
+        case $execution_status in
+          "waiting")
+            echo "Retrying in 5 seconds..."
+            sleep 5
+            ;;
+          "in_progress")
+            echo "Retrying in 5 seconds..."
+            sleep 5
+            ;;
+          "aborted")
+            exit 1
+            ;;
+          "finished")
+            case $result_status in
+              "failed")
+                exit 1
+                ;;
+              "succeeded")
+                exit 0
+                ;;
+              *)
+                exit 1
+                ;;
+            esac
+            ;;
+          *)
+            exit 1
+            ;;
+        esac
+      done
+    env:
+      RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
+    filter:
+      - /mint
+      - /mint-testing/.mint/trigger-integration-test.yml
