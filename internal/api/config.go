@@ -1,4 +1,4 @@
-package client
+package api
 
 import (
 	"github.com/rwx-research/mint-cli/internal/accesstoken"

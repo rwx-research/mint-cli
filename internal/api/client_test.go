@@ -1,4 +1,4 @@
-package client_test
+package api_test
 
 import (
 	"bytes"
@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/rwx-research/mint-cli/internal/client"
+	"github.com/rwx-research/mint-cli/internal/api"
 )
 
-var _ = Describe("Client", func() {
+var _ = Describe("API Client", func() {
 	Describe("InitiateRun", func() {
 		It("prefixes the endpoint with the base path", func() {
 			body := struct {
@@ -39,11 +39,11 @@ var _ = Describe("Client", func() {
 				}, nil
 			}
 
-			c := client.Client{roundTrip}
+			c := api.Client{roundTrip}
 
-			initRunConfig := client.InitiateRunConfig{
+			initRunConfig := api.InitiateRunConfig{
 				InitializationParameters: map[string]string{},
-				TaskDefinitions: []client.TaskDefinition{
+				TaskDefinitions: []api.TaskDefinition{
 					{Path: "foo", FileContents: "echo 'bar'"},
 				},
 				TargetedTaskKeys: []string{},
@@ -75,10 +75,10 @@ var _ = Describe("Client", func() {
 				}, nil
 			}
 
-			c := client.Client{roundTrip}
+			c := api.Client{roundTrip}
 
-			obtainAuthCodeConfig := client.ObtainAuthCodeConfig{
-				Code: client.ObtainAuthCodeCode{
+			obtainAuthCodeConfig := api.ObtainAuthCodeConfig{
+				Code: api.ObtainAuthCodeCode{
 					DeviceName: "some-device",
 				},
 			}
@@ -110,7 +110,7 @@ var _ = Describe("Client", func() {
 				}, nil
 			}
 
-			c := client.Client{roundTrip}
+			c := api.Client{roundTrip}
 
 			_, err := c.AcquireToken("https://cloud.rwx.com/api/auth/codes/some-uuid/token")
 			Expect(err).To(BeNil())

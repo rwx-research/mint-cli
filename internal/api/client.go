@@ -1,4 +1,4 @@
-package client
+package api
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ type Client struct {
 	RoundTrip func(*http.Request) (*http.Response, error)
 }
 
-func New(cfg Config) (Client, error) {
+func NewClient(cfg Config) (Client, error) {
 	if err := cfg.Validate(); err != nil {
 		return Client{}, errors.Wrap(err, "validation failed")
 	}

@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
+	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/cli"
-	"github.com/rwx-research/mint-cli/internal/client"
 	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/fs"
 	"github.com/rwx-research/mint-cli/internal/mocks"
@@ -19,20 +19,20 @@ import (
 
 var _ = Describe("CLI Service", func() {
 	var (
-		config     cli.Config
-		service    cli.Service
-		mockClient *mocks.Client
-		mockFS     *mocks.FileSystem
-		mockSSH    *mocks.SSH
+		config  cli.Config
+		service cli.Service
+		mockAPI *mocks.API
+		mockFS  *mocks.FileSystem
+		mockSSH *mocks.SSH
 	)
 
 	BeforeEach(func() {
-		mockClient = new(mocks.Client)
+		mockAPI = new(mocks.API)
 		mockFS = new(mocks.FileSystem)
 		mockSSH = new(mocks.SSH)
 
 		config = cli.Config{
-			APIClient:  mockClient,
+			APIClient:  mockAPI,
 			FileSystem: mockFS,
 			SSHClient:  mockSSH,
 		}
@@ -65,12 +65,12 @@ var _ = Describe("CLI Service", func() {
 					file := mocks.NewFile(originalFileContent)
 					return file, nil
 				}
-				mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
+				mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 					Expect(cfg.TaskDefinitions).To(HaveLen(1))
 					Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
 					Expect(cfg.UseCache).To(BeTrue())
 					receivedFileContent = cfg.TaskDefinitions[0].FileContents
-					return &client.InitiateRunResult{
+					return &api.InitiateRunResult{
 						RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 						RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 						TargetedTaskKeys: []string{},
@@ -92,12 +92,12 @@ var _ = Describe("CLI Service", func() {
 				BeforeEach(func() {
 					runConfig.NoCache = true
 
-					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
+					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
 						Expect(cfg.UseCache).To(BeFalse())
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
-						return &client.InitiateRunResult{
+						return &api.InitiateRunResult{
 							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
@@ -113,12 +113,12 @@ var _ = Describe("CLI Service", func() {
 				BeforeEach(func() {
 					runConfig.TargetedTasks = []string{fmt.Sprintf("%d", GinkgoRandomSeed())}
 
-					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
+					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
 						Expect(cfg.TargetedTaskKeys).To(Equal([]string{fmt.Sprintf("%d", GinkgoRandomSeed())}))
 						receivedFileContent = cfg.TaskDefinitions[0].FileContents
-						return &client.InitiateRunResult{
+						return &api.InitiateRunResult{
 							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
@@ -195,11 +195,11 @@ var _ = Describe("CLI Service", func() {
 					originalFileContents["test/onetwo.yml"] = "tasks:\n  - key: one\n    run: echo 'two'\n"
 					originalFileContents["test/helloworld.json"] = "tasks:\n  - key: hello\n    run: echo 'world'\n"
 
-					mockClient.MockInitiateRun = func(cfg client.InitiateRunConfig) (*client.InitiateRunResult, error) {
+					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						for _, def := range cfg.TaskDefinitions {
 							receivedFileContents[def.Path] = def.FileContents
 						}
-						return &client.InitiateRunResult{
+						return &api.InitiateRunResult{
 							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
@@ -269,11 +269,11 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				RunURL: fmt.Sprintf("https://cloud.rwx.com/mint/rwx/runs/%s", runID),
 			}
 
-			mockClient.MockGetDebugConnectionInfo = func(runId string) (client.DebugConnectionInfo, error) {
+			mockAPI.MockGetDebugConnectionInfo = func(runId string) (api.DebugConnectionInfo, error) {
 				Expect(runID).To(Equal(runId))
 				fetchedConnectionInfo = true
 				// Note: This is returning a matching private & public key. The real API returns different ones
-				return client.DebugConnectionInfo{PrivateUserKey: privateTestKey, PublicHostKey: publicTestKey, Address: agentAddress}, nil
+				return api.DebugConnectionInfo{PrivateUserKey: privateTestKey, PublicHostKey: publicTestKey, Address: agentAddress}, nil
 			}
 
 			mockSSH.MockConnect = func(addr string, _ ssh.ClientConfig) error {
@@ -321,7 +321,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 		Context("when unable to obtain an auth code", func() {
 			BeforeEach(func() {
-				mockClient.MockObtainAuthCode = func(oacc client.ObtainAuthCodeConfig) (*client.ObtainAuthCodeResult, error) {
+				mockAPI.MockObtainAuthCode = func(oacc api.ObtainAuthCodeConfig) (*api.ObtainAuthCodeResult, error) {
 					Expect(oacc.Code.DeviceName).To(Equal("some-device"))
 					return nil, errors.New("error in obtain auth code")
 				}
@@ -345,9 +345,9 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 		Context("with an auth code created", func() {
 			BeforeEach(func() {
-				mockClient.MockObtainAuthCode = func(oacc client.ObtainAuthCodeConfig) (*client.ObtainAuthCodeResult, error) {
+				mockAPI.MockObtainAuthCode = func(oacc api.ObtainAuthCodeConfig) (*api.ObtainAuthCodeResult, error) {
 					Expect(oacc.Code.DeviceName).To(Equal("some-device"))
-					return &client.ObtainAuthCodeResult{
+					return &api.ObtainAuthCodeResult{
 						AuthorizationUrl: "https://cloud.local/_/auth/code?code=your-code",
 						TokenUrl:         "https://cloud.local/api/auth/codes/code-uuid/token",
 					}, nil
@@ -357,15 +357,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			Context("when polling results in authorized", func() {
 				BeforeEach(func() {
 					pollCounter := 0
-					mockClient.MockAcquireToken = func(tokenUrl string) (*client.AcquireTokenResult, error) {
+					mockAPI.MockAcquireToken = func(tokenUrl string) (*api.AcquireTokenResult, error) {
 						Expect(tokenUrl).To(Equal("https://cloud.local/api/auth/codes/code-uuid/token"))
 
 						if pollCounter > 1 {
 							pollCounter++
-							return &client.AcquireTokenResult{State: "authorized", Token: "your-token"}, nil
+							return &api.AcquireTokenResult{State: "authorized", Token: "your-token"}, nil
 						} else {
 							pollCounter++
-							return &client.AcquireTokenResult{State: "pending"}, nil
+							return &api.AcquireTokenResult{State: "pending"}, nil
 						}
 					}
 				})
@@ -437,15 +437,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			Context("when polling results in consumed", func() {
 				BeforeEach(func() {
 					pollCounter := 0
-					mockClient.MockAcquireToken = func(tokenUrl string) (*client.AcquireTokenResult, error) {
+					mockAPI.MockAcquireToken = func(tokenUrl string) (*api.AcquireTokenResult, error) {
 						Expect(tokenUrl).To(Equal("https://cloud.local/api/auth/codes/code-uuid/token"))
 
 						if pollCounter > 1 {
 							pollCounter++
-							return &client.AcquireTokenResult{State: "consumed"}, nil
+							return &api.AcquireTokenResult{State: "consumed"}, nil
 						} else {
 							pollCounter++
-							return &client.AcquireTokenResult{State: "pending"}, nil
+							return &api.AcquireTokenResult{State: "pending"}, nil
 						}
 					}
 				})
@@ -502,15 +502,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			Context("when polling results in expired", func() {
 				BeforeEach(func() {
 					pollCounter := 0
-					mockClient.MockAcquireToken = func(tokenUrl string) (*client.AcquireTokenResult, error) {
+					mockAPI.MockAcquireToken = func(tokenUrl string) (*api.AcquireTokenResult, error) {
 						Expect(tokenUrl).To(Equal("https://cloud.local/api/auth/codes/code-uuid/token"))
 
 						if pollCounter > 1 {
 							pollCounter++
-							return &client.AcquireTokenResult{State: "expired"}, nil
+							return &api.AcquireTokenResult{State: "expired"}, nil
 						} else {
 							pollCounter++
-							return &client.AcquireTokenResult{State: "pending"}, nil
+							return &api.AcquireTokenResult{State: "pending"}, nil
 						}
 					}
 				})
@@ -567,15 +567,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			Context("when polling results in something else", func() {
 				BeforeEach(func() {
 					pollCounter := 0
-					mockClient.MockAcquireToken = func(tokenUrl string) (*client.AcquireTokenResult, error) {
+					mockAPI.MockAcquireToken = func(tokenUrl string) (*api.AcquireTokenResult, error) {
 						Expect(tokenUrl).To(Equal("https://cloud.local/api/auth/codes/code-uuid/token"))
 
 						if pollCounter > 1 {
 							pollCounter++
-							return &client.AcquireTokenResult{State: "unexpected-state-here-uh-oh"}, nil
+							return &api.AcquireTokenResult{State: "unexpected-state-here-uh-oh"}, nil
 						} else {
 							pollCounter++
-							return &client.AcquireTokenResult{State: "pending"}, nil
+							return &api.AcquireTokenResult{State: "pending"}, nil
 						}
 					}
 				})
