@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -206,6 +207,30 @@ func (s Service) Login(cfg LoginConfig) error {
 			return errors.New("The code is in an unexpected state. You can try again, but this is likely an issue with RWX Cloud. Please reach out at support@rwx.com.")
 		}
 	}
+}
+
+func (s Service) Whoami(cfg WhoamiConfig) error {
+	result, err := s.APIClient.Whoami()
+	if err != nil {
+		return errors.Wrap(err, "unable to determine details about the access token")
+	}
+
+	if cfg.Json {
+		encoded, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return errors.Wrap(err, "unable to JSON encode the result")
+		}
+
+		fmt.Fprint(cfg.Stdout, string(encoded))
+	} else {
+		fmt.Fprintf(cfg.Stdout, "Token Kind: %v\n", strings.ReplaceAll(result.TokenKind, "_", " "))
+		fmt.Fprintf(cfg.Stdout, "Organization: %v\n", result.OrganizationSlug)
+		if result.UserEmail != nil {
+			fmt.Fprintf(cfg.Stdout, "User: %v\n", *result.UserEmail)
+		}
+	}
+
+	return nil
 }
 
 // taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.

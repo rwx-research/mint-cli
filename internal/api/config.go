@@ -66,3 +66,9 @@ type AcquireTokenResult struct {
 	State string `json:"state"` // consumed, expired, authorized, pending
 	Token string `json:"token,omitempty"`
 }
+
+type WhoamiResult struct {
+	OrganizationSlug string  `json:"organization_slug"`
+	TokenKind        string  `json:"token_kind"` // organization_access_token, personal_access_token
+	UserEmail        *string `json:"user_email,omitempty"`
+}

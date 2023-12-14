@@ -73,3 +73,12 @@ func (c LoginConfig) Validate() error {
 
 	return nil
 }
+
+type WhoamiConfig struct {
+	Json   bool
+	Stdout io.Writer
+}
+
+func (c WhoamiConfig) Validate() error {
+	return nil
+}

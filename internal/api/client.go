@@ -138,7 +138,7 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	}, nil
 }
 
-// InitiateRun sends a request to Mint for starting a new run
+// ObtainAuthCode requests a new one-time-use code to login on a device
 func (c Client) ObtainAuthCode(cfg ObtainAuthCodeConfig) (*ObtainAuthCodeResult, error) {
 	endpoint := "/api/auth/codes"
 
@@ -176,7 +176,7 @@ func (c Client) ObtainAuthCode(cfg ObtainAuthCodeConfig) (*ObtainAuthCodeResult,
 	return &respBody, nil
 }
 
-// InitiateRun sends a request to Mint for starting a new run
+// AcquireToken consumes the one-time-use code once authorized
 func (c Client) AcquireToken(tokenUrl string) (*AcquireTokenResult, error) {
 	req, err := http.NewRequest(http.MethodGet, tokenUrl, bytes.NewBuffer(make([]byte, 0)))
 	if err != nil {
@@ -195,6 +195,35 @@ func (c Client) AcquireToken(tokenUrl string) (*AcquireTokenResult, error) {
 	}
 
 	respBody := AcquireTokenResult{}
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return nil, errors.Wrap(err, "unable to parse API response")
+	}
+
+	return &respBody, nil
+}
+
+// Whoami provides details about the authenticated token
+func (c Client) Whoami() (*WhoamiResult, error) {
+	endpoint := "/api/auth/whoami"
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, bytes.NewBuffer([]byte{}))
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to create new HTTP request")
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.RoundTrip(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "HTTP request failed")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, errors.New(fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
+	}
+
+	respBody := WhoamiResult{}
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
 		return nil, errors.Wrap(err, "unable to parse API response")
 	}

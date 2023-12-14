@@ -630,4 +630,152 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 		})
 	})
+
+	Describe("whoami", func() {
+		var (
+			stdout strings.Builder
+		)
+
+		BeforeEach(func() {
+			stdout = strings.Builder{}
+		})
+
+		Context("when outputting json", func() {
+			Context("when the request fails", func() {
+				BeforeEach(func() {
+					mockAPI.MockWhoami = func() (*api.WhoamiResult, error) {
+						return nil, errors.New("uh oh can't figure out who you are")
+					}
+				})
+
+				It("returns an error", func() {
+					err := service.Whoami(cli.WhoamiConfig{
+						Json:   true,
+						Stdout: &stdout,
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("unable to determine details about the access token"))
+					Expect(err.Error()).To(ContainSubstring("can't figure out who you are"))
+				})
+			})
+
+			Context("when there is an email", func() {
+				BeforeEach(func() {
+					mockAPI.MockWhoami = func() (*api.WhoamiResult, error) {
+						email := "someone@rwx.com"
+						return &api.WhoamiResult{
+							TokenKind:        "personal_access_token",
+							OrganizationSlug: "rwx",
+							UserEmail:        &email,
+						}, nil
+					}
+				})
+
+				It("writes the token kind, organization, and user", func() {
+					err := service.Whoami(cli.WhoamiConfig{
+						Json:   true,
+						Stdout: &stdout,
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(ContainSubstring(`"token_kind": "personal_access_token"`))
+					Expect(stdout.String()).To(ContainSubstring(`"organization_slug": "rwx"`))
+					Expect(stdout.String()).To(ContainSubstring(`"user_email": "someone@rwx.com"`))
+				})
+			})
+
+			Context("when there is not an email", func() {
+				BeforeEach(func() {
+					mockAPI.MockWhoami = func() (*api.WhoamiResult, error) {
+						return &api.WhoamiResult{
+							TokenKind:        "organization_access_token",
+							OrganizationSlug: "rwx",
+						}, nil
+					}
+				})
+
+				It("writes the token kind and organization", func() {
+					err := service.Whoami(cli.WhoamiConfig{
+						Json:   true,
+						Stdout: &stdout,
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(ContainSubstring(`"token_kind": "organization_access_token"`))
+					Expect(stdout.String()).To(ContainSubstring(`"organization_slug": "rwx"`))
+					Expect(stdout.String()).NotTo(ContainSubstring(`"user_email"`))
+				})
+			})
+		})
+
+		Context("when outputting plaintext", func() {
+			Context("when the request fails", func() {
+				BeforeEach(func() {
+					mockAPI.MockWhoami = func() (*api.WhoamiResult, error) {
+						return nil, errors.New("uh oh can't figure out who you are")
+					}
+				})
+
+				It("returns an error", func() {
+					err := service.Whoami(cli.WhoamiConfig{
+						Json:   false,
+						Stdout: &stdout,
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("unable to determine details about the access token"))
+					Expect(err.Error()).To(ContainSubstring("can't figure out who you are"))
+				})
+			})
+
+			Context("when there is an email", func() {
+				BeforeEach(func() {
+					mockAPI.MockWhoami = func() (*api.WhoamiResult, error) {
+						email := "someone@rwx.com"
+						return &api.WhoamiResult{
+							TokenKind:        "personal_access_token",
+							OrganizationSlug: "rwx",
+							UserEmail:        &email,
+						}, nil
+					}
+				})
+
+				It("writes the token kind, organization, and user", func() {
+					err := service.Whoami(cli.WhoamiConfig{
+						Json:   false,
+						Stdout: &stdout,
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(ContainSubstring("Token Kind: personal access token"))
+					Expect(stdout.String()).To(ContainSubstring("Organization: rwx"))
+					Expect(stdout.String()).To(ContainSubstring("User: someone@rwx.com"))
+				})
+			})
+
+			Context("when there is not an email", func() {
+				BeforeEach(func() {
+					mockAPI.MockWhoami = func() (*api.WhoamiResult, error) {
+						return &api.WhoamiResult{
+							TokenKind:        "organization_access_token",
+							OrganizationSlug: "rwx",
+						}, nil
+					}
+				})
+
+				It("writes the token kind and organization", func() {
+					err := service.Whoami(cli.WhoamiConfig{
+						Json:   false,
+						Stdout: &stdout,
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(ContainSubstring("Token Kind: organization access token"))
+					Expect(stdout.String()).To(ContainSubstring("Organization: rwx"))
+					Expect(stdout.String()).NotTo(ContainSubstring("User:"))
+				})
+			})
+		})
+	})
 })
