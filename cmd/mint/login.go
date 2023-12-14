@@ -15,7 +15,8 @@ import (
 )
 
 var (
-	DeviceName string
+	DeviceName                    string
+	OpenMintLoginAuthorizationUrl bool
 
 	loginCmd = &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -40,12 +41,17 @@ var (
 				DeviceName = deviceName
 			}
 
+			openUrl := open.Run
+			if !OpenMintLoginAuthorizationUrl {
+				openUrl = func(input string) error { return nil }
+			}
+
 			err := service.Login(
 				cli.LoginConfig{
 					DeviceName:         DeviceName,
 					AccessTokenBackend: accessTokenBackend,
 					Stdout:             os.Stdout,
-					OpenUrl:            open.Run,
+					OpenUrl:            openUrl,
 				},
 			)
 			if err != nil {
@@ -62,6 +68,7 @@ var (
 
 func init() {
 	loginCmd.Flags().StringVar(&DeviceName, "device-name", "", "the name of the device logging in (if unset, you will be prompted to enter interactively)")
+	loginCmd.Flags().BoolVar(&OpenMintLoginAuthorizationUrl, "open", true, "whether the authorization URL should automatically be opened in your browser")
 }
 
 func defaultDeviceName() string {
