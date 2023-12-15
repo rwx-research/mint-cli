@@ -13,7 +13,7 @@ concurrency-pools:
 
 tasks:
   - key: git-clone
-    call: mint/checkout 0.0.0
+    call: mint/git-clone 1.0.0
     with:
       preserve-git-dir: "true"
       repository: git@github.com:rwx-research/mint-cli.git
@@ -73,7 +73,7 @@ tasks:
     env:
       RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
   - key: checkout-mint-testing
-    call: mint/checkout 0.0.0
+    call: mint/git-clone 1.0.0
     with:
       path: ./mint-testing
       repository: git@github.com:rwx-research/mint-testing.git
