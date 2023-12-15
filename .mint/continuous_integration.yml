@@ -87,7 +87,7 @@ tasks:
   - key: run-mint-testing-tests
     use: [checkout-mint-testing, install-jq, build-mint-cli]
     run: |
-      initiate_run_result=$(./mint run --json --file ./mint-testing/.mint/trigger-integration-test.yml --init spec=mint-login.spec.ts --init ref=main --init cli=${{ init.commit }})
+      initiate_run_result=$(./mint run --json --file ./mint-testing/.mint/trigger-integration-test.yml --init grep=@cli --init spec=mint-login.spec.ts --init ref=main --init cli=${{ init.commit }})
       echo "${initiate_run_result}"
       run_id=$(echo "${initiate_run_result}" | jq -r ".RunId")
 
