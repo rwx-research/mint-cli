@@ -15,14 +15,14 @@ concurrency-pools:
 
 tasks:
   - key: clone
-    call: mint/checkout 0.0.0
+    call: mint/git-clone 1.0.0
     with:
       repository: git@github.com:rwx-research/mint.git
       ref: main
       ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_REPO }}
   - key: setup-node
     use: clone
-    call: mint/setup-node 0.0.0
+    call: mint/install-node 1.0.0
     with:
       node-version-file: .node-version
     filter:
