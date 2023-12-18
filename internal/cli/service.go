@@ -133,8 +133,18 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		}
 	}
 
+	i := 0
+	initializationParameters := make([]api.InitializationParameter, len(cfg.InitParameters))
+	for key, value := range cfg.InitParameters {
+		initializationParameters[i] = api.InitializationParameter{
+			Key:   key,
+			Value: value,
+		}
+		i++
+	}
+
 	runResult, err := s.APIClient.InitiateRun(api.InitiateRunConfig{
-		InitializationParameters: cfg.InitParameters,
+		InitializationParameters: initializationParameters,
 		TaskDefinitions:          taskDefinitions,
 		TargetedTaskKeys:         cfg.TargetedTasks,
 		UseCache:                 !cfg.NoCache,

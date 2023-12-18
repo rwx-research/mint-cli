@@ -92,7 +92,9 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 		return nil, errors.Wrap(err, "validation failed")
 	}
 
-	encodedBody, err := json.Marshal(struct{ Run InitiateRunConfig }{cfg})
+	encodedBody, err := json.Marshal(struct {
+		Run InitiateRunConfig `json:"run"`
+	}{cfg})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to encode as JSON")
 	}
@@ -120,22 +122,35 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	}
 
 	respBody := struct {
-		RunId            string
-		RunURL           string
-		TargetedTaskKeys []string
-		DefinitionPath   string
+		SnakeRunId            string   `json:"run_id"`
+		SnakeRunURL           string   `json:"run_url"`
+		SnakeTargetedTaskKeys []string `json:"targeted_task_keys"`
+		SnakeDefinitionPath   string   `json:"definition_path"`
+		CamelRunId            string   `json:"runId"`
+		CamelRunURL           string   `json:"runURL"`
+		CamelTargetedTaskKeys []string `json:"targetedTaskKeys"`
+		CamelDefinitionPath   string   `json:"definitionPath"`
 	}{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
 		return nil, errors.Wrap(err, "unable to parse API response")
 	}
 
-	return &InitiateRunResult{
-		RunId:            respBody.RunId,
-		RunURL:           respBody.RunURL,
-		TargetedTaskKeys: respBody.TargetedTaskKeys,
-		DefinitionPath:   respBody.DefinitionPath,
-	}, nil
+	if respBody.CamelRunId != "" {
+		return &InitiateRunResult{
+			RunId:            respBody.CamelRunId,
+			RunURL:           respBody.CamelRunURL,
+			TargetedTaskKeys: respBody.CamelTargetedTaskKeys,
+			DefinitionPath:   respBody.CamelDefinitionPath,
+		}, nil
+	} else {
+		return &InitiateRunResult{
+			RunId:            respBody.SnakeRunId,
+			RunURL:           respBody.SnakeRunURL,
+			TargetedTaskKeys: respBody.SnakeTargetedTaskKeys,
+			DefinitionPath:   respBody.SnakeDefinitionPath,
+		}, nil
+	}
 }
 
 // ObtainAuthCode requests a new one-time-use code to login on a device
