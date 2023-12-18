@@ -16,7 +16,7 @@ import (
 
 var _ = Describe("API Client", func() {
 	Describe("InitiateRun", func() {
-		It("prefixes the endpoint with the base path", func() {
+		It("prefixes the endpoint with the base path and parses camelcase responses", func() {
 			body := struct {
 				RunID            string   `json:"runId"`
 				RunURL           string   `json:"runUrl"`
@@ -42,7 +42,7 @@ var _ = Describe("API Client", func() {
 			c := api.Client{roundTrip}
 
 			initRunConfig := api.InitiateRunConfig{
-				InitializationParameters: map[string]string{},
+				InitializationParameters: []api.InitializationParameter{},
 				TaskDefinitions: []api.TaskDefinition{
 					{Path: "foo", FileContents: "echo 'bar'"},
 				},
@@ -50,8 +50,48 @@ var _ = Describe("API Client", func() {
 				UseCache:         false,
 			}
 
-			_, err := c.InitiateRun(initRunConfig)
+			result, err := c.InitiateRun(initRunConfig)
 			Expect(err).To(BeNil())
+			Expect(result.RunId).To(Equal("123"))
+		})
+
+		It("prefixes the endpoint with the base path and parses snakecase responses", func() {
+			body := struct {
+				RunID            string   `json:"run_id"`
+				RunURL           string   `json:"run_url"`
+				TargetedTaskKeys []string `json:"targeted_task_keys"`
+				DefinitionPath   string   `json:"definition_path"`
+			}{
+				RunID:            "123",
+				RunURL:           "https://cloud.rwx.com/mint/org/runs/123",
+				TargetedTaskKeys: []string{},
+				DefinitionPath:   "foo",
+			}
+			bodyBytes, _ := json.Marshal(body)
+
+			roundTrip := func(req *http.Request) (*http.Response, error) {
+				Expect(req.URL.Path).To(Equal("/mint/api/runs"))
+				return &http.Response{
+					Status:     "201 Created",
+					StatusCode: 201,
+					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+				}, nil
+			}
+
+			c := api.Client{roundTrip}
+
+			initRunConfig := api.InitiateRunConfig{
+				InitializationParameters: []api.InitializationParameter{},
+				TaskDefinitions: []api.TaskDefinition{
+					{Path: "foo", FileContents: "echo 'bar'"},
+				},
+				TargetedTaskKeys: []string{},
+				UseCache:         false,
+			}
+
+			result, err := c.InitiateRun(initRunConfig)
+			Expect(err).To(BeNil())
+			Expect(result.RunId).To(Equal("123"))
 		})
 	})
 

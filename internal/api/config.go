@@ -20,10 +20,15 @@ func (c Config) Validate() error {
 }
 
 type InitiateRunConfig struct {
-	InitializationParameters map[string]string
-	TaskDefinitions          []TaskDefinition
-	TargetedTaskKeys         []string `json:",omitempty"`
-	UseCache                 bool
+	InitializationParameters []InitializationParameter `json:"initialization_parameters"`
+	TaskDefinitions          []TaskDefinition          `json:"task_definitions"`
+	TargetedTaskKeys         []string                  `json:"targeted_task_keys,omitempty"`
+	UseCache                 bool                      `json:"use_cache"`
+}
+
+type InitializationParameter struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type InitiateRunResult struct {

@@ -68,10 +68,22 @@ var (
 			}
 
 			if Json {
-				runResultJson, err := json.Marshal(runResult)
+				jsonOutput := struct {
+					RunId            string
+					RunURL           string
+					TargetedTaskKeys []string
+					DefinitionPath   string
+				}{
+					RunId:            runResult.RunId,
+					RunURL:           runResult.RunURL,
+					TargetedTaskKeys: runResult.TargetedTaskKeys,
+					DefinitionPath:   runResult.DefinitionPath,
+				}
+				runResultJson, err := json.Marshal(jsonOutput)
 				if err != nil {
 					return err
 				}
+
 				fmt.Println(string(runResultJson))
 			} else {
 				fmt.Printf("Run is watchable at %s\n", runResult.RunURL)
