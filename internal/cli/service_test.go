@@ -778,4 +778,98 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 		})
 	})
+
+	Describe("setting secrets", func() {
+		var (
+			stdout       strings.Builder
+		)
+
+		BeforeEach(func() {
+			var err error
+			Expect(err).NotTo(HaveOccurred())
+
+			stdout = strings.Builder{}
+		})
+
+		Context("when unable to set secrets", func() {
+			BeforeEach(func() {
+				mockAPI.MockSetSecretsInVault = func(ssivc api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error) {
+					Expect(ssivc.VaultName).To(Equal("default"))
+					Expect(ssivc.Secrets[0].Name).To(Equal("ABC"))
+					Expect(ssivc.Secrets[0].Secret).To(Equal("123"))
+					return nil, errors.New("error setting secret")
+				}
+			})
+
+			It("returns an error", func() {
+				err := service.SetSecretsInVault(cli.SetSecretsInVaultConfig{
+					Vault:   "default",
+					Secrets: []string{"ABC=123"},
+					Stdout:  &stdout,
+				})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("error setting secret"))
+			})
+		})
+
+		Context("with secrets set", func() {
+			BeforeEach(func() {
+				mockAPI.MockSetSecretsInVault = func(ssivc api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error) {
+					Expect(ssivc.VaultName).To(Equal("default"))
+					Expect(ssivc.Secrets[0].Name).To(Equal("ABC"))
+					Expect(ssivc.Secrets[0].Secret).To(Equal("123"))
+					Expect(ssivc.Secrets[1].Name).To(Equal("DEF"))
+					Expect(ssivc.Secrets[1].Secret).To(Equal("\"xyz\""))
+					return &api.SetSecretsInVaultResult{
+						SetSecrets: []string{"ABC","DEF"},
+					}, nil
+				}
+			})
+
+			It("is successful", func() {
+				err := service.SetSecretsInVault(cli.SetSecretsInVaultConfig{
+					Vault:   "default",
+					Secrets: []string{"ABC=123", "DEF=\"xyz\""},
+					Stdout:  &stdout,
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(stdout.String()).To(Equal("\nSuccessfully set the following secrets: ABC, DEF"))
+			})
+		})
+
+		Context("when reading secrets from a file", func() {
+			BeforeEach(func() {
+				mockAPI.MockSetSecretsInVault = func(ssivc api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error) {
+					Expect(ssivc.VaultName).To(Equal("default"))
+					Expect(ssivc.Secrets[0].Name).To(Equal("ABC"))
+					Expect(ssivc.Secrets[0].Secret).To(Equal("123"))
+					Expect(ssivc.Secrets[1].Name).To(Equal("DEF"))
+					Expect(ssivc.Secrets[1].Secret).To(Equal("xyz"))
+					return &api.SetSecretsInVaultResult{
+						SetSecrets: []string{"ABC","DEF"},
+					}, nil
+				}
+
+				mockFS.MockOpen = func(name string) (fs.File, error) {
+					Expect(name).To(Equal("secrets.txt"))
+					file := mocks.NewFile("ABC=123\nDEF=\"xyz\"\n")
+					return file, nil
+				}
+			})
+
+			It("is successful", func() {
+				err := service.SetSecretsInVault(cli.SetSecretsInVaultConfig{
+					Vault:   "default",
+					Secrets: []string{},
+					File:    "secrets.txt",
+					Stdout:  &stdout,
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(stdout.String()).To(Equal("\nSuccessfully set the following secrets: ABC, DEF"))
+			})
+		})
+	})
 })

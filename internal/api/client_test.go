@@ -186,4 +186,28 @@ var _ = Describe("API Client", func() {
 			Expect(err).To(BeNil())
 		})
 	})
+
+	Describe("SetSecretsInVault", func() {
+		It("makes the request", func() {
+			body := api.SetSecretsInVaultConfig{
+				VaultName: "default",
+				Secrets: []api.Secret{{Name: "ABC", Secret: "123"}},
+			}
+			bodyBytes, _ := json.Marshal(body)
+
+			roundTrip := func(req *http.Request) (*http.Response, error) {
+				Expect(req.URL.Path).To(Equal("/mint/api/vaults/secrets"))
+				return &http.Response{
+					Status:     "200 OK",
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+				}, nil
+			}
+
+			c := api.Client{roundTrip}
+
+			_, err := c.SetSecretsInVault(body)
+			Expect(err).To(BeNil())
+		})
+	})
 })

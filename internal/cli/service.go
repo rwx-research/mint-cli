@@ -243,6 +243,75 @@ func (s Service) Whoami(cfg WhoamiConfig) error {
 	return nil
 }
 
+// DebugRunConfig will connect to a running task over SSH. Key exchange is facilitated over the Cloud API.
+func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
+	err := cfg.Validate()
+	if err != nil {
+		return errors.Wrap(err, "validation failed")
+	}
+
+	secrets := []api.Secret{}
+	for i := range cfg.Secrets {
+		key, value, found := strings.Cut(cfg.Secrets[i], "=")
+		if !found {
+			return errors.New(fmt.Sprintf("Invalid secret '%s'. Secrets must be specified in the form 'KEY=value'.", cfg.Secrets[i]))
+		}
+		secrets = append(secrets, api.Secret{
+			Name:   key,
+			Secret: value,
+		})
+	}
+
+	if cfg.File != "" {
+		fd, err := s.FileSystem.Open(cfg.File)
+		if err != nil {
+			return errors.Wrapf(err, "error while opening %q", cfg.File)
+		}
+		defer fd.Close()
+
+		fileContent, err := io.ReadAll(fd)
+		if err != nil {
+			return errors.Wrapf(err, "error while reading %q", cfg.File)
+		}
+
+		fileLines := strings.Split(string(fileContent), "\n")
+
+		for i := range fileLines {
+			if fileLines[i] == "" {
+				continue
+			}
+			key, value, found := strings.Cut(fileLines[i], "=")
+			if !found {
+				return errors.New(fmt.Sprintf("Invalid secret '%s' in file %s. Secrets must be specified in the form 'KEY=value'.", cfg.Secrets[i], cfg.File))
+			}
+			// If a line is like ABC="def", we need to strip off the leading and trailing quotation mark
+			if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+				value = value[1 : len(value)-1]
+			}
+			secrets = append(secrets, api.Secret{
+				Name:   key,
+				Secret: value,
+			})
+		}
+	}
+
+	result, err := s.APIClient.SetSecretsInVault(api.SetSecretsInVaultConfig{
+		VaultName: cfg.Vault,
+		Secrets: secrets,
+	})
+
+	if result != nil && len(result.SetSecrets) > 0 {
+		fmt.Fprintln(cfg.Stdout)
+		fmt.Fprintf(cfg.Stdout, "Successfully set the following secrets: %s", strings.Join(result.SetSecrets, ", "))
+	}
+
+	if err != nil {
+		return errors.Wrap(err, "unable to set secrets")
+	}
+
+	return nil
+}
+
 // taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.
 // No validation takes place here.
 func (s Service) taskDefinitionsFromPaths(paths []string) ([]api.TaskDefinition, error) {
