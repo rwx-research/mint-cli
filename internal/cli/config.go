@@ -82,3 +82,23 @@ type WhoamiConfig struct {
 func (c WhoamiConfig) Validate() error {
 	return nil
 }
+
+type SetSecretsInVaultConfig struct {
+	Secrets []string
+	Vault   string
+	File    string
+	Stdout  io.Writer
+}
+
+func (c SetSecretsInVaultConfig) Validate() error {
+	if c.Vault == "" {
+		return errors.New("the vault name must be provided")
+	}
+
+	if len(c.Secrets) == 0 && c.File == "" {
+		return errors.New("the secrets to set must be provided")
+	}
+
+	return nil
+}
+

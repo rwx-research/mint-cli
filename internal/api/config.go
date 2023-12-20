@@ -77,3 +77,17 @@ type WhoamiResult struct {
 	TokenKind        string  `json:"token_kind"` // organization_access_token, personal_access_token
 	UserEmail        *string `json:"user_email,omitempty"`
 }
+
+type SetSecretsInVaultConfig struct {
+	Secrets   []Secret `json:"secrets"`
+	VaultName string  `json:"vault_name"`
+}
+
+type Secret struct {
+	Name   string `json:"name"`
+	Secret string `json:"secret"`
+}
+
+type SetSecretsInVaultResult struct {
+	SetSecrets []string `json:"set_secrets"`
+}

@@ -12,6 +12,7 @@ type APIClient interface {
 	ObtainAuthCode(api.ObtainAuthCodeConfig) (*api.ObtainAuthCodeResult, error)
 	AcquireToken(tokenUrl string) (*api.AcquireTokenResult, error)
 	Whoami() (*api.WhoamiResult, error)
+	SetSecretsInVault(api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error)
 }
 
 type SSHClient interface {

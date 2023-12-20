@@ -11,6 +11,7 @@ type API struct {
 	MockObtainAuthCode         func(api.ObtainAuthCodeConfig) (*api.ObtainAuthCodeResult, error)
 	MockAcquireToken           func(tokenUrl string) (*api.AcquireTokenResult, error)
 	MockWhoami                 func() (*api.WhoamiResult, error)
+	MockSetSecretsInVault      func(api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error)
 }
 
 func (c *API) InitiateRun(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
@@ -52,3 +53,12 @@ func (c *API) Whoami() (*api.WhoamiResult, error) {
 
 	return nil, errors.New("MockWhoami was not configured")
 }
+
+func (c *API) SetSecretsInVault(cfg api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error) {
+	if c.MockSetSecretsInVault != nil {
+		return c.MockSetSecretsInVault(cfg)
+	}
+
+	return nil, errors.New("MockSetSecretsInVault was not configured")
+}
+
