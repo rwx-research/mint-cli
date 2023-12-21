@@ -1,6 +1,8 @@
 package cli_test
 
 import (
+	"sort"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -842,19 +844,26 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 		Context("when reading secrets from a file", func() {
 			BeforeEach(func() {
 				mockAPI.MockSetSecretsInVault = func(ssivc api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error) {
+					sort.Slice(ssivc.Secrets, func(i, j int) bool {
+						return ssivc.Secrets[i].Name < ssivc.Secrets[j].Name
+					})
 					Expect(ssivc.VaultName).To(Equal("default"))
-					Expect(ssivc.Secrets[0].Name).To(Equal("ABC"))
+					Expect(ssivc.Secrets[0].Name).To(Equal("A"))
 					Expect(ssivc.Secrets[0].Secret).To(Equal("123"))
-					Expect(ssivc.Secrets[1].Name).To(Equal("DEF"))
+					Expect(ssivc.Secrets[1].Name).To(Equal("B"))
 					Expect(ssivc.Secrets[1].Secret).To(Equal("xyz"))
+					Expect(ssivc.Secrets[2].Name).To(Equal("C"))
+					Expect(ssivc.Secrets[2].Secret).To(Equal("q\\nqq"))
+					Expect(ssivc.Secrets[3].Name).To(Equal("D"))
+					Expect(ssivc.Secrets[3].Secret).To(Equal("a multiline\nstring\nspanning lines"))
 					return &api.SetSecretsInVaultResult{
-						SetSecrets: []string{"ABC","DEF"},
+						SetSecrets: []string{"A", "B", "C", "D"},
 					}, nil
 				}
 
 				mockFS.MockOpen = func(name string) (fs.File, error) {
 					Expect(name).To(Equal("secrets.txt"))
-					file := mocks.NewFile("ABC=123\nDEF=\"xyz\"\n")
+					file := mocks.NewFile("A=123\nB=\"xyz\"\nC='q\\nqq'\nD=\"a multiline\nstring\nspanning lines\"")
 					return file, nil
 				}
 			})
@@ -868,7 +877,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				})
 
 				Expect(err).NotTo(HaveOccurred())
-				Expect(stdout.String()).To(Equal("\nSuccessfully set the following secrets: ABC, DEF"))
+				Expect(stdout.String()).To(Equal("\nSuccessfully set the following secrets: A, B, C, D"))
 			})
 		})
 	})
