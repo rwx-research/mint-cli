@@ -10,6 +10,7 @@ import (
 
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/api"
+	"github.com/rwx-research/mint-cli/internal/dotenv"
 	"github.com/rwx-research/mint-cli/internal/errors"
 
 	"github.com/briandowns/spinner"
@@ -274,20 +275,13 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 			return errors.Wrapf(err, "error while reading %q", cfg.File)
 		}
 
-		fileLines := strings.Split(string(fileContent), "\n")
+		dotenvMap := make(map[string]string)
+		err = dotenv.ParseBytes(fileContent, dotenvMap)
+		if err != nil {
+			return errors.Wrapf(err, "error while parsing %q", cfg.File)
+		}
 
-		for i := range fileLines {
-			if fileLines[i] == "" {
-				continue
-			}
-			key, value, found := strings.Cut(fileLines[i], "=")
-			if !found {
-				return errors.New(fmt.Sprintf("Invalid secret '%s' in file %s. Secrets must be specified in the form 'KEY=value'.", cfg.Secrets[i], cfg.File))
-			}
-			// If a line is like ABC="def", we need to strip off the leading and trailing quotation mark
-			if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
-				value = value[1 : len(value)-1]
-			}
+		for key, value := range dotenvMap {
 			secrets = append(secrets, api.Secret{
 				Name:   key,
 				Secret: value,
