@@ -85,6 +85,13 @@ func (s Service) DebugTask(cfg DebugTaskConfig) error {
 	defer s.SSHClient.Close()
 
 	if err := s.SSHClient.InteractiveSession(); err != nil {
+		var exitErr *ssh.ExitError
+		// 137 is the default exit code for SIGKILL. This happens if the agent is forcefully terminating
+		// the SSH server due to a run or task cancellation.
+		if errors.As(err, &exitErr) && exitErr.ExitStatus() == 137 {
+			return errors.New("The task was cancelled. Please check the Web UI for further details.")
+		}
+
 		return errors.Wrap(err, "unable to start interactive session on remote host")
 	}
 
@@ -291,7 +298,7 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 
 	result, err := s.APIClient.SetSecretsInVault(api.SetSecretsInVaultConfig{
 		VaultName: cfg.Vault,
-		Secrets: secrets,
+		Secrets:   secrets,
 	})
 
 	if result != nil && len(result.SetSecrets) > 0 {

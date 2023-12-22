@@ -12,6 +12,7 @@ var (
 	ErrNotFound      = errors.New("not found")
 	ErrGone          = errors.New("gone")
 
+	As        = errors.As
 	Errorf    = errors.Errorf
 	Is        = errors.Is
 	New       = errors.New
