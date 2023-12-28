@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -251,7 +252,6 @@ func (s Service) Whoami(cfg WhoamiConfig) error {
 	return nil
 }
 
-// DebugRunConfig will connect to a running task over SSH. Key exchange is facilitated over the Cloud API.
 func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 	err := cfg.Validate()
 	if err != nil {
@@ -308,6 +308,131 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 
 	if err != nil {
 		return errors.Wrap(err, "unable to set secrets")
+	}
+
+	return nil
+}
+
+func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
+	var files []string
+
+	if len(cfg.Files) > 0 {
+		files = cfg.Files
+	} else {
+		yamlFilePathsInDirectory, err := s.yamlFilePathsInDirectory(cfg.DefaultDir)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("unable to find yaml files in directory %s", cfg.DefaultDir))
+		}
+		files = yamlFilePathsInDirectory
+	}
+
+	if len(files) == 0 {
+		return errors.New(fmt.Sprintf("no files provided, and no yaml files found in directory %s", cfg.DefaultDir))
+	}
+
+	leafReferences, err := s.findLeafReferences(files)
+	if err != nil {
+		return err
+	}
+
+	leafVersions, err := s.APIClient.GetLeafVersions()
+	if err != nil {
+		return errors.Wrap(err, "unable to fetch leaf versions")
+	}
+
+	replacements := make(map[string]string)
+	for leaf, references := range leafReferences {
+		latestVersion, ok := leafVersions.LatestMajor[leaf]
+		if !ok {
+			cfg.Stderr.Write([]byte(fmt.Sprintf("Unable to find the leaf %q; skipping it.\n", leaf)))
+			continue
+		}
+
+		replacement := fmt.Sprintf("%s %s", leaf, latestVersion)
+
+		for _, reference := range references {
+			if reference != replacement {
+				replacements[reference] = replacement
+			}
+		}
+	}
+
+	err = s.replaceInFiles(files, replacements)
+	if err != nil {
+		return errors.Wrap(err, "unable to replace leaf references")
+	}
+
+	if len(replacements) == 0 {
+		cfg.Stdout.Write([]byte("No leaves to update.\n"))
+	} else {
+		cfg.Stdout.Write([]byte("Updated the following leaves:\n"))
+		for original, replacement := range replacements {
+			cfg.Stdout.Write([]byte(fmt.Sprintf("\t%s -> %s\n", original, replacement)))
+		}
+	}
+
+	return nil
+}
+
+var reLeaf = regexp.MustCompile(`([a-z0-9-]+\/[a-z0-9-]+) ([0-9]+\.[0-9]+\.[0-9]+)`)
+
+func (s Service) findLeafReferences(files []string) (map[string]([]string), error) {
+	matches := make(map[string]([]string))
+
+	for _, path := range files {
+		fd, err := s.FileSystem.Open(path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		fileContent, err := io.ReadAll(fd)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while reading %q", path)
+		}
+
+		for _, match := range reLeaf.FindAllSubmatch(fileContent, -1) {
+			fullMatch := string(match[0])
+			leaf := string(match[1])
+			if _, ok := matches[leaf]; !ok {
+				matches[leaf] = []string{fullMatch}
+			} else {
+				matches[leaf] = append(matches[leaf], fullMatch)
+			}
+		}
+	}
+
+	return matches, nil
+}
+
+func (s Service) replaceInFiles(files []string, replacements map[string]string) error {
+	for _, path := range files {
+		fd, err := s.FileSystem.Open(path)
+		if err != nil {
+			return errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		fileContent, err := io.ReadAll(fd)
+		if err != nil {
+			return errors.Wrapf(err, "error while reading %q", path)
+		}
+		fileContentStr := string(fileContent)
+
+		for old, new := range replacements {
+			fileContentStr = strings.ReplaceAll(fileContentStr, old, new)
+		}
+
+		fd, err = s.FileSystem.Create(path)
+		if err != nil {
+			return errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		_, err = io.WriteString(fd, fileContentStr)
+		if err != nil {
+			return errors.Wrapf(err, "error while writing %q", path)
+		}
 	}
 
 	return nil

@@ -13,6 +13,7 @@ type APIClient interface {
 	AcquireToken(tokenUrl string) (*api.AcquireTokenResult, error)
 	Whoami() (*api.WhoamiResult, error)
 	SetSecretsInVault(api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error)
+	GetLeafVersions() (*api.LeafVersionsResult, error)
 }
 
 type SSHClient interface {

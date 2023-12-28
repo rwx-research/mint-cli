@@ -12,6 +12,7 @@ type API struct {
 	MockAcquireToken           func(tokenUrl string) (*api.AcquireTokenResult, error)
 	MockWhoami                 func() (*api.WhoamiResult, error)
 	MockSetSecretsInVault      func(api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error)
+	MockGetLeafVersions        func() (*api.LeafVersionsResult, error)
 }
 
 func (c *API) InitiateRun(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
@@ -62,3 +63,10 @@ func (c *API) SetSecretsInVault(cfg api.SetSecretsInVaultConfig) (*api.SetSecret
 	return nil, errors.New("MockSetSecretsInVault was not configured")
 }
 
+func (c *API) GetLeafVersions() (*api.LeafVersionsResult, error) {
+	if c.MockGetLeafVersions != nil {
+		return c.MockGetLeafVersions()
+	}
+
+	return nil, errors.New("MockGetLeafVersions was not configured")
+}
