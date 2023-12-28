@@ -344,7 +344,7 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	for leaf, references := range leafReferences {
 		latestVersion, ok := leafVersions.LatestMajor[leaf]
 		if !ok {
-			cfg.Stderr.Write([]byte(fmt.Sprintf("Unable to find the leaf %q; skipping it.\n", leaf)))
+			fmt.Fprintf(cfg.Stderr, "Unable to find the leaf %q; skipping it.\n", leaf)
 			continue
 		}
 
@@ -363,11 +363,11 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	}
 
 	if len(replacements) == 0 {
-		cfg.Stdout.Write([]byte("No leaves to update.\n"))
+		fmt.Fprintln(cfg.Stdout, "No leaves to update.")
 	} else {
-		cfg.Stdout.Write([]byte("Updated the following leaves:\n"))
+		fmt.Fprintln(cfg.Stdout, "Updated the following leaves:")
 		for original, replacement := range replacements {
-			cfg.Stdout.Write([]byte(fmt.Sprintf("\t%s -> %s\n", original, replacement)))
+			fmt.Fprintf(cfg.Stdout, "\t%s -> %s\n", original, replacement)
 		}
 	}
 
