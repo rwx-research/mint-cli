@@ -80,7 +80,7 @@ type WhoamiResult struct {
 
 type SetSecretsInVaultConfig struct {
 	Secrets   []Secret `json:"secrets"`
-	VaultName string  `json:"vault_name"`
+	VaultName string   `json:"vault_name"`
 }
 
 type Secret struct {
@@ -90,4 +90,8 @@ type Secret struct {
 
 type SetSecretsInVaultResult struct {
 	SetSecrets []string `json:"set_secrets"`
+}
+
+type LeafVersionsResult struct {
+	LatestMajor map[string]string `json:"latest_major"`
 }

@@ -102,3 +102,9 @@ func (c SetSecretsInVaultConfig) Validate() error {
 	return nil
 }
 
+type UpdateLeavesConfig struct {
+	Files      []string
+	DefaultDir string
+	Stdout     io.Writer
+	Stderr     io.Writer
+}

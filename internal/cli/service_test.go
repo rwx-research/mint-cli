@@ -783,7 +783,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 	Describe("setting secrets", func() {
 		var (
-			stdout       strings.Builder
+			stdout strings.Builder
 		)
 
 		BeforeEach(func() {
@@ -824,7 +824,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Expect(ssivc.Secrets[1].Name).To(Equal("DEF"))
 					Expect(ssivc.Secrets[1].Secret).To(Equal("\"xyz\""))
 					return &api.SetSecretsInVaultResult{
-						SetSecrets: []string{"ABC","DEF"},
+						SetSecrets: []string{"ABC", "DEF"},
 					}, nil
 				}
 			})
@@ -878,6 +878,293 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(stdout.String()).To(Equal("\nSuccessfully set the following secrets: A, B, C, D"))
+			})
+		})
+	})
+
+	Describe("updating leaves", func() {
+		var (
+			stdout strings.Builder
+			stderr strings.Builder
+		)
+
+		BeforeEach(func() {
+			stdout = strings.Builder{}
+			stderr = strings.Builder{}
+		})
+
+		Context("when no files provided", func() {
+			Context("when no yaml files found in the default directory", func() {
+				BeforeEach(func() {
+					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
+						return []fs.DirEntry{
+							mocks.DirEntry{FileName: "foo.txt"},
+							mocks.DirEntry{FileName: "bar.json"},
+						}, nil
+					}
+				})
+
+				It("returns an error", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout:     &stdout,
+						Stderr:     &stderr,
+						Files:      []string{},
+						DefaultDir: ".mint",
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("no files provided, and no yaml files found in directory .mint"))
+				})
+			})
+
+			Context("when yaml files are found in the specified directory", func() {
+				var openedFiles []string
+
+				BeforeEach(func() {
+					openedFiles = []string{}
+
+					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
+						return []fs.DirEntry{
+							mocks.DirEntry{FileName: "foo.txt"},
+							mocks.DirEntry{FileName: "bar.yaml"},
+							mocks.DirEntry{FileName: "baz.yml"},
+						}, nil
+					}
+					mockFS.MockOpen = func(path string) (fs.File, error) {
+						openedFiles = append(openedFiles, path)
+						file := mocks.NewFile("")
+						return file, nil
+					}
+					mockFS.MockCreate = func(path string) (fs.File, error) {
+						openedFiles = append(openedFiles, path)
+						file := mocks.NewFile("")
+						return file, nil
+					}
+
+					mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
+						return &api.LeafVersionsResult{
+							LatestMajor: map[string]string{},
+						}, nil
+					}
+				})
+
+				It("uses the default directory", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout:     &stdout,
+						Stderr:     &stderr,
+						Files:      []string{},
+						DefaultDir: ".mint",
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(openedFiles).To(ContainElement(".mint/bar.yaml"))
+					Expect(openedFiles).To(ContainElement(".mint/baz.yml"))
+				})
+			})
+		})
+
+		Context("with files", func() {
+			var originalFiles map[string]string
+			var writtenFiles map[string]*mocks.File
+			var leafVersions map[string]string
+			var leafError error
+
+			BeforeEach(func() {
+				originalFiles = make(map[string]string)
+				writtenFiles = make(map[string]*mocks.File)
+				leafVersions = make(map[string]string)
+				leafError = nil
+
+				mockFS.MockOpen = func(path string) (fs.File, error) {
+					content, ok := originalFiles[path]
+					if !ok {
+						return nil, errors.New("file not found")
+					}
+					file := mocks.NewFile(content)
+					return file, nil
+				}
+				mockFS.MockCreate = func(path string) (fs.File, error) {
+					file := mocks.NewFile("")
+					writtenFiles[path] = file
+					return file, nil
+				}
+				mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
+					return &api.LeafVersionsResult{
+						LatestMajor: leafVersions,
+					}, leafError
+				}
+			})
+
+			Context("when the leaf versions cannot be retrieved", func() {
+				BeforeEach(func() {
+					leafError = errors.New("cannot get leaf versions")
+					originalFiles["foo.yaml"] = ""
+				})
+
+				It("returns an error", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout: &stdout,
+						Stderr: &stderr,
+						Files:  []string{"foo.yaml"},
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("cannot get leaf versions"))
+				})
+			})
+
+			Context("when all leaves are already up-to-date", func() {
+				BeforeEach(func() {
+					leafVersions["mint/setup-node"] = "1.2.3"
+					originalFiles["foo.yaml"] = `
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.2.3
+					`
+				})
+
+				It("does not change the file content", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout: &stdout,
+						Stderr: &stderr,
+						Files:  []string{"foo.yaml"},
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.2.3
+					`))
+				})
+
+				It("indicates no leaves were updated", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout: &stdout,
+						Stderr: &stderr,
+						Files:  []string{"foo.yaml"},
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(ContainSubstring("No leaves to update."))
+				})
+			})
+
+			Context("when there are leaves to update across multiple files", func() {
+				BeforeEach(func() {
+					leafVersions["mint/setup-node"] = "1.2.3"
+					leafVersions["mint/setup-ruby"] = "1.0.1"
+					originalFiles["foo.yaml"] = `
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.0.1
+						- key: bar
+							call: mint/setup-ruby 0.0.1
+					`
+					originalFiles["bar.yaml"] = `
+					tasks:
+						- key: foo
+							call: mint/setup-ruby 1.0.0
+					`
+				})
+
+				It("updates all files", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout: &stdout,
+						Stderr: &stderr,
+						Files:  []string{"foo.yaml", "bar.yaml"},
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.2.3
+						- key: bar
+							call: mint/setup-ruby 1.0.1
+					`))
+					Expect(writtenFiles["bar.yaml"].Buffer.String()).To(Equal(`
+					tasks:
+						- key: foo
+							call: mint/setup-ruby 1.0.1
+					`))
+				})
+
+				It("indicates leaves were updated", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout: &stdout,
+						Stderr: &stderr,
+						Files:  []string{"foo.yaml", "bar.yaml"},
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(ContainSubstring("Updated the following leaves:"))
+					Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 -> mint/setup-node 1.2.3"))
+					Expect(stdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 -> mint/setup-ruby 1.0.1"))
+					Expect(stdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 -> mint/setup-ruby 1.0.1"))
+				})
+			})
+
+			Context("when a leaf cannot be found", func() {
+				BeforeEach(func() {
+					originalFiles["foo.yaml"] = `
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.0.1
+					`
+				})
+
+				It("does not modify the file", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout: &stdout,
+						Stderr: &stderr,
+						Files:  []string{"foo.yaml"},
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.0.1
+					`))
+				})
+
+				It("indicates a leaf could not be found", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout: &stdout,
+						Stderr: &stderr,
+						Files:  []string{"foo.yaml"},
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stderr.String()).To(ContainSubstring(`Unable to find the leaf "mint/setup-node"; skipping it.`))
+				})
+			})
+
+			Context("when a leaf reference is a later version than the latest major", func() {
+				BeforeEach(func() {
+					leafVersions["mint/setup-node"] = "1.0.3"
+					originalFiles["foo.yaml"] = `
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.1.1
+					`
+				})
+
+				It("updates the leaf", func() {
+					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout: &stdout,
+						Stderr: &stderr,
+						Files:  []string{"foo.yaml"},
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.0.3
+					`))
+				})
 			})
 		})
 	})
