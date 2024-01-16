@@ -61,17 +61,6 @@ tasks:
     run: |
       nix develop --command go mod tidy
       git diff --exit-code
-  - key: kickoff-unstable-release-on-main
-    use: build-mint-cli
-    after: [unit-tests, integration-tests]
-    if: ${{ init.branch == "main" }}
-    run: |
-      ./mint run -f .mint/release.yml \
-        --init "kind=unstable" \
-        --init "commit=${{ init.commit }}" \
-        --init "version=UNSTABLE"
-    env:
-      RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
   - key: checkout-mint-testing
     call: mint/git-clone 1.1.4
     with:
