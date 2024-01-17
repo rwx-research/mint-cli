@@ -49,6 +49,7 @@ type InitiateRunConfig struct {
 	MintFilePath   string
 	NoCache        bool
 	TargetedTasks  []string
+	Title          string
 }
 
 func (c InitiateRunConfig) Validate() error {

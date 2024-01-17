@@ -23,6 +23,7 @@ type InitiateRunConfig struct {
 	InitializationParameters []InitializationParameter `json:"initialization_parameters"`
 	TaskDefinitions          []TaskDefinition          `json:"task_definitions"`
 	TargetedTaskKeys         []string                  `json:"targeted_task_keys,omitempty"`
+	Title                    string                    `json:"title,omitempty"`
 	UseCache                 bool                      `json:"use_cache"`
 }
 
