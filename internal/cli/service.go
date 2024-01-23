@@ -155,6 +155,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		InitializationParameters: initializationParameters,
 		TaskDefinitions:          taskDefinitions,
 		TargetedTaskKeys:         cfg.TargetedTasks,
+		Title:                    cfg.Title,
 		UseCache:                 !cfg.NoCache,
 	})
 	if err != nil {
