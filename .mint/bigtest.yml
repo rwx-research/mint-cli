@@ -13,6 +13,9 @@ concurrency-pools:
     capacity: 1
     on-overflow: cancel-running
 
+tool-cache:
+  vault: mint_cli_main
+
 tasks:
   - key: clone
     call: mint/git-clone 1.1.4
