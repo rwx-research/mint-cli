@@ -292,7 +292,7 @@ var _ = Describe("CLI Service", func() {
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
-						Expect(cfg.MintDirectory).To(BeNil())
+						Expect(cfg.MintDirectory).To(HaveLen(0))
 						Expect(cfg.UseCache).To(BeTrue())
 						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
 						return &api.InitiateRunResult{
@@ -318,10 +318,12 @@ var _ = Describe("CLI Service", func() {
 		Context("with no specific mint file and no specific directory", func() {
 			Context("when a directory with files is found", func() {
 				var originalMintDirFileContent string
+				var receivedTaskDefinitionsFileContent string
 				var receivedMintDirFileContent string
 
 				BeforeEach(func() {
 					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
+					receivedTaskDefinitionsFileContent = ""
 					receivedMintDirFileContent = ""
 					runConfig.MintFilePath = ""
 					runConfig.MintDirectory = ""
@@ -350,11 +352,13 @@ var _ = Describe("CLI Service", func() {
 					}
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
-						// note that this is relative to cwd and that the mint dir files are in task definitions instead of mint directory
+						// note that this is relative to cwd
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal("../../.mint/mintdir-tasks.yml"))
-						Expect(cfg.MintDirectory).To(BeNil())
+						Expect(cfg.MintDirectory).To(HaveLen(1))
+						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint/mintdir-tasks.yml"))
 						Expect(cfg.UseCache).To(BeTrue())
-						receivedMintDirFileContent = cfg.TaskDefinitions[0].FileContents
+						receivedTaskDefinitionsFileContent = cfg.TaskDefinitions[0].FileContents
+						receivedMintDirFileContent = cfg.MintDirectory[0].FileContents
 						return &api.InitiateRunResult{
 							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
@@ -370,6 +374,7 @@ var _ = Describe("CLI Service", func() {
 				})
 
 				It("sends the file contents to cloud", func() {
+					Expect(receivedTaskDefinitionsFileContent).To(Equal(originalMintDirFileContent))
 					Expect(receivedMintDirFileContent).To(Equal(originalMintDirFileContent))
 				})
 			})
@@ -678,10 +683,12 @@ var _ = Describe("CLI Service", func() {
 		Context("with no specific mint file and a specific directory", func() {
 			Context("when a directory with files is found", func() {
 				var originalMintDirFileContent string
+				var receivedTaskDefinitionsFileContent string
 				var receivedMintDirFileContent string
 
 				BeforeEach(func() {
 					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
+					receivedTaskDefinitionsFileContent = ""
 					receivedMintDirFileContent = ""
 					runConfig.MintFilePath = ""
 					runConfig.MintDirectory = "some-dir"
@@ -706,9 +713,11 @@ var _ = Describe("CLI Service", func() {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						// note that this is the _specified_ dir and path to the file
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal("some-dir/mintdir-tasks.yml"))
-						Expect(cfg.MintDirectory).To(BeNil())
+						Expect(cfg.MintDirectory).To(HaveLen(1))
+						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint/mintdir-tasks.yml"))
 						Expect(cfg.UseCache).To(BeTrue())
-						receivedMintDirFileContent = cfg.TaskDefinitions[0].FileContents
+						receivedTaskDefinitionsFileContent = cfg.TaskDefinitions[0].FileContents
+						receivedMintDirFileContent = cfg.MintDirectory[0].FileContents
 						return &api.InitiateRunResult{
 							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
@@ -724,6 +733,7 @@ var _ = Describe("CLI Service", func() {
 				})
 
 				It("sends the file contents to cloud", func() {
+					Expect(receivedTaskDefinitionsFileContent).To(Equal(originalMintDirFileContent))
 					Expect(receivedMintDirFileContent).To(Equal(originalMintDirFileContent))
 				})
 			})

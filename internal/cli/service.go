@@ -106,7 +106,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		return nil, errors.Wrap(err, "validation failed")
 	}
 
-	var mintDirectoryYamlPaths []string
+	mintDirectoryYamlPaths := make([]string, 0)
 	taskDefinitionYamlPaths := make([]string, 0)
 
 	mintDirectoryPath, err := s.findMintDirectoryPath(cfg.MintDirectory)
@@ -131,7 +131,6 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	// (whether it was specified or found via traversal)
 	if cfg.MintFilePath == "" {
 		taskDefinitionYamlPaths = mintDirectoryYamlPaths
-		mintDirectoryYamlPaths = nil
 	} else {
 		taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, cfg.MintFilePath)
 	}
@@ -144,14 +143,11 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		}
 	}
 
-	var mintDirectory []api.TaskDefinition
-	if mintDirectoryYamlPaths != nil {
-		taskDefinitionsInMintDirectory, err := s.taskDefinitionsFromPaths(mintDirectoryYamlPaths)
-		if err != nil {
-			return nil, errors.Wrap(err, "unable to read provided files")
-		}
-		mintDirectory = taskDefinitionsInMintDirectory
+	mintDirectory, err := s.taskDefinitionsFromPaths(mintDirectoryYamlPaths)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to read provided files")
 	}
+
 	taskDefinitions, err := s.taskDefinitionsFromPaths(taskDefinitionYamlPaths)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
