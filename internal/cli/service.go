@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -105,39 +106,96 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		return nil, errors.Wrap(err, "validation failed")
 	}
 
-	// If a specific mint-file wasn't supplied over the CLI flags, fall back to reading the mint directory
-	paths := []string{cfg.MintFilePath}
-	if cfg.MintFilePath == "" {
-		paths, err = s.yamlFilePathsInDirectory(cfg.MintDirectory)
+	var mintDirectoryYamlPaths []string
+	taskDefinitionYamlPaths := make([]string, 0)
+
+	mintDirectoryPath, err := s.findMintDirectoryPath(cfg.MintDirectory)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to find .mint directory")
+	}
+
+	// It's possible (when no directory is specified) that there is no .mint directory found during traversal
+	if mintDirectoryPath != "" {
+		paths, err := s.yamlFilePathsInDirectory(mintDirectoryPath)
 		if err != nil {
-			if errors.Is(err, errors.ErrFileNotExists) {
-				errMsg := "No run definitions provided!"
-
-				if cfg.MintDirectory != ".mint" {
-					errMsg = fmt.Sprintf("%s You specified --dir %s but the directory %s could not be found", errMsg, cfg.MintDirectory, cfg.MintDirectory)
-				} else {
-					errMsg = fmt.Sprintf("%s Add a run definition to your .mint directory, or use --file", errMsg)
-				}
-
-				return nil, errors.New(errMsg)
+			if errors.Is(err, errors.ErrFileNotExists) && cfg.MintDirectory != "" {
+				return nil, fmt.Errorf("You specified --dir %q, but %q could not be found", cfg.MintDirectory, cfg.MintDirectory)
 			}
 
 			return nil, errors.Wrap(err, "unable to find yaml files in directory")
 		}
+		mintDirectoryYamlPaths = paths
 	}
 
-	if len(paths) == 0 {
-		return nil, errors.Errorf("No run definitions provided! Add a run definition to your %s directory, or use `--file`", cfg.MintDirectory)
+	// If a file is not specified, we need to use whatever the .mint directory is as the task definitions
+	// (whether it was specified or found via traversal)
+	if cfg.MintFilePath == "" {
+		taskDefinitionYamlPaths = mintDirectoryYamlPaths
+		mintDirectoryYamlPaths = nil
+	} else {
+		taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, cfg.MintFilePath)
 	}
 
-	taskDefinitions, err := s.taskDefinitionsFromPaths(paths)
+	if len(taskDefinitionYamlPaths) == 0 {
+		if cfg.MintDirectory != "" {
+			return nil, fmt.Errorf("No run definitions provided! Add a run definition to %q, or use --file", cfg.MintDirectory)
+		} else {
+			return nil, errors.New("No run definitions provided! Add a run definition to your .mint directory, or use --file")
+		}
+	}
+
+	var mintDirectory []api.TaskDefinition
+	if mintDirectoryYamlPaths != nil {
+		taskDefinitionsInMintDirectory, err := s.taskDefinitionsFromPaths(mintDirectoryYamlPaths)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to read provided files")
+		}
+		mintDirectory = taskDefinitionsInMintDirectory
+	}
+	taskDefinitions, err := s.taskDefinitionsFromPaths(taskDefinitionYamlPaths)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
+	}
+
+	for _, taskDefinition := range mintDirectory {
+		if err := validateYAML(taskDefinition.FileContents); err != nil {
+			return nil, errors.Wrapf(err, "unable to parse %q", taskDefinition.Path)
+		}
 	}
 
 	for _, taskDefinition := range taskDefinitions {
 		if err := validateYAML(taskDefinition.FileContents); err != nil {
 			return nil, errors.Wrapf(err, "unable to parse %q", taskDefinition.Path)
+		}
+	}
+
+	// mintDirectory task definitions must have their paths relative to the .mint directory
+	for i, taskDefinition := range mintDirectory {
+		relPath, err := filepath.Rel(mintDirectoryPath, taskDefinition.Path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to determine relative path of %q", taskDefinition.Path)
+		}
+		taskDefinition.Path = filepath.Join(".mint", relPath)
+		mintDirectory[i] = taskDefinition
+	}
+
+	// A fully implicit invocation results in traversing the working directory for a .mint directory
+	// When we find one, regardless of the distance, we use it as the task definitions
+	// In that case, we want to make the paths relative to the working directory so it's clear where the
+	// definitions are defined
+	if cfg.MintDirectory == "" && cfg.MintFilePath == "" {
+		wd, err := s.FileSystem.Getwd()
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to determine the working directory")
+		}
+
+		for i, taskDefinition := range taskDefinitions {
+			relPath, err := filepath.Rel(wd, taskDefinition.Path)
+			if err != nil {
+				return nil, errors.Wrapf(err, "unable to determine relative path of %q", taskDefinition.Path)
+			}
+			taskDefinition.Path = relPath
+			taskDefinitions[i] = taskDefinition
 		}
 	}
 
@@ -154,6 +212,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	runResult, err := s.APIClient.InitiateRun(api.InitiateRunConfig{
 		InitializationParameters: initializationParameters,
 		TaskDefinitions:          taskDefinitions,
+		MintDirectory:            mintDirectory,
 		TargetedTaskKeys:         cfg.TargetedTasks,
 		Title:                    cfg.Title,
 		UseCache:                 !cfg.NoCache,
@@ -362,6 +421,37 @@ func (s Service) yamlFilePathsInDirectory(dir string) ([]string, error) {
 	}
 
 	return paths, nil
+}
+
+// yamlFilePathsInDirectory returns any *.yml and *.yaml files in a given directory, ignoring any sub-directories.
+func (s Service) findMintDirectoryPath(configuredDirectory string) (string, error) {
+	if configuredDirectory != "" {
+		return configuredDirectory, nil
+	}
+
+	workingDirectory, err := s.FileSystem.Getwd()
+	if err != nil {
+		return "", errors.Wrap(err, "unable to determine the working directory")
+	}
+
+	// otherwise, walk up the working directory looking at each basename
+	for {
+		workingDirHasMintDir, err := s.FileSystem.Exists(filepath.Join(workingDirectory, ".mint"))
+		if err != nil {
+			return "", errors.Wrapf(err, "unable to determine if .mint exists in %q", workingDirectory)
+		}
+
+		if workingDirHasMintDir {
+			return filepath.Join(workingDirectory, ".mint"), nil
+		}
+
+		if (workingDirectory == string(os.PathSeparator)) {
+			return "", nil
+		}
+
+		parentDir, _ := filepath.Split(workingDirectory)
+		workingDirectory = filepath.Clean(parentDir)
+	}
 }
 
 // validateYAML checks whether a string can be parsed as YAML

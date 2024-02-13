@@ -53,10 +53,6 @@ type InitiateRunConfig struct {
 }
 
 func (c InitiateRunConfig) Validate() error {
-	if c.MintDirectory == "" && c.MintFilePath == "" {
-		return errors.New("either the mint directory or the mint config file path needs to be set")
-	}
-
 	return nil
 }
 
@@ -102,4 +98,3 @@ func (c SetSecretsInVaultConfig) Validate() error {
 
 	return nil
 }
-

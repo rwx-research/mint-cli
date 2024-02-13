@@ -5,4 +5,6 @@ type FileSystem interface {
 	Open(name string) (File, error)
 	ReadDir(name string) ([]DirEntry, error)
 	MkdirAll(path string) error
+	Getwd() (string, error)
+	Exists(name string) (bool, error)
 }
