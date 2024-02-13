@@ -1,9 +1,14 @@
 on:
   github:
     push:
-      init:
-        branch: ${{ mint.run.git.branch }}
-        commit: ${{ event.github.push.head_commit.id }}
+      - if: ${{ mint.run.git.ref =~ '^refs/heads/.+$' }}
+        init:
+          branch: ${{ mint.run.git.branch }}
+          commit: ${{ event.github.push.head_commit.id }}
+      - if: ${{ mint.run.git.ref =~ '^refs/tags/.+$' }}
+        init:
+          branch: ${{ mint.run.git.tag }} # not entirely correct, but captain in the generated bigtest tasks needs this
+          commit: ${{ event.github.push.head_commit.id }}
 
 concurrency-pools:
   - id: rwx-research/mint-cli:${{ init.branch }}
