@@ -10,6 +10,8 @@ type FileSystem struct {
 	MockOpen     func(name string) (fs.File, error)
 	MockReadDir  func(name string) ([]fs.DirEntry, error)
 	MockMkdirAll func(path string) error
+	MockGetwd    func() (string, error)
+	MockExists   func(name string) (bool, error)
 }
 
 func (f *FileSystem) Create(name string) (fs.File, error) {
@@ -42,4 +44,20 @@ func (f *FileSystem) MkdirAll(path string) error {
 	}
 
 	return errors.New("MockMkdirAll was not configured")
+}
+
+func (f *FileSystem) Getwd() (string, error) {
+	if f.MockGetwd != nil {
+		return f.MockGetwd()
+	}
+
+	return "", errors.New("MockGetwd was not configured")
+}
+
+func (f *FileSystem) Exists(name string) (bool, error) {
+	if f.MockExists != nil {
+		return f.MockExists(name)
+	}
+
+	return false, errors.New("MockExists was not configured")
 }

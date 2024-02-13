@@ -22,6 +22,7 @@ func (c Config) Validate() error {
 type InitiateRunConfig struct {
 	InitializationParameters []InitializationParameter `json:"initialization_parameters"`
 	TaskDefinitions          []TaskDefinition          `json:"task_definitions"`
+	MintDirectory            []TaskDefinition          `json:"mint_directory"`
 	TargetedTaskKeys         []string                  `json:"targeted_task_keys,omitempty"`
 	Title                    string                    `json:"title,omitempty"`
 	UseCache                 bool                      `json:"use_cache"`
