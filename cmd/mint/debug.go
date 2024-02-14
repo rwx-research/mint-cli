@@ -12,10 +12,10 @@ var debugCmd = &cobra.Command{
 		return requireAccessToken()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return service.DebugTask(cli.DebugTaskConfig{RunURL: args[0]})
+		return service.DebugTask(cli.DebugTaskConfig{DebugKey: args[0]})
 	},
 	Short: "Debug a task on Mint",
-	Use:   "debug [flags] [runURL]",
+	Use:   "debug [flags] [debugKey]",
 }
 
 func init() {
