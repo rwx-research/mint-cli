@@ -39,20 +39,9 @@ func (s Service) DebugTask(cfg DebugTaskConfig) error {
 		return errors.Wrap(err, "validation failed")
 	}
 
-	runId := filepath.Base(cfg.RunURL)
-
-	connectionInfo, err := s.APIClient.GetDebugConnectionInfo(runId)
+	connectionInfo, err := s.APIClient.GetDebugConnectionInfo(cfg.DebugKey)
 	if err != nil {
-		switch {
-		case errors.Is(err, errors.ErrBadRequest):
-			return errors.New(fmt.Sprintf("Run %q doesn't appear to have a task that's ready to debug. Please check the run status in your browser.", runId))
-		case errors.Is(err, errors.ErrNotFound):
-			return errors.New(fmt.Sprintf("Unknown run %q. Please invoke 'mint debug' with a URL to a run.", runId))
-		case errors.Is(err, errors.ErrGone):
-			return errors.New("Unable to locate a server instance for your run. Please retry the execution of the entire run and contact us if the issues persits.")
-		default:
-			return errors.Wrapf(err, "unable to fetch connection info for run %s", runId)
-		}
+		return err
 	}
 
 	privateUserKey, err := ssh.ParsePrivateKey([]byte(connectionInfo.PrivateUserKey))

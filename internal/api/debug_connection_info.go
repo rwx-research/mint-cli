@@ -5,3 +5,7 @@ type DebugConnectionInfo struct {
 	PublicHostKey  string `json:"public_host_key"`
 	PrivateUserKey string `json:"private_user_key"`
 }
+
+type DebugConnectionInfoError struct {
+	Error         string
+}

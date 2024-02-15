@@ -7,7 +7,7 @@ import (
 )
 
 type APIClient interface {
-	GetDebugConnectionInfo(runID string) (api.DebugConnectionInfo, error)
+	GetDebugConnectionInfo(debugKey string) (api.DebugConnectionInfo, error)
 	InitiateRun(api.InitiateRunConfig) (*api.InitiateRunResult, error)
 	ObtainAuthCode(api.ObtainAuthCodeConfig) (*api.ObtainAuthCodeResult, error)
 	AcquireToken(tokenUrl string) (*api.AcquireTokenResult, error)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/rwx-research/mint-cli/cmd/mint/config"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
@@ -45,14 +46,14 @@ func NewClient(cfg Config) (Client, error) {
 	return Client{roundTrip}, nil
 }
 
-func (c Client) GetDebugConnectionInfo(runID string) (DebugConnectionInfo, error) {
+func (c Client) GetDebugConnectionInfo(debugKey string) (DebugConnectionInfo, error) {
 	connectionInfo := DebugConnectionInfo{}
 
-	if runID == "" {
-		return connectionInfo, errors.New("missing runID")
+	if debugKey == "" {
+		return connectionInfo, errors.New("missing debugKey")
 	}
 
-	endpoint := fmt.Sprintf("/mint/api/runs/%s/debug_connection_info", runID)
+	endpoint := fmt.Sprintf("/mint/api/debug_connection_info?debug_key=%s", url.QueryEscape(debugKey))
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return connectionInfo, errors.Wrap(err, "unable to create new HTTP request")
@@ -68,6 +69,10 @@ func (c Client) GetDebugConnectionInfo(runID string) (DebugConnectionInfo, error
 	case 200:
 		break
 	case 400:
+		connectionError := DebugConnectionInfoError{}
+		if err := json.NewDecoder(resp.Body).Decode(&connectionError); err == nil {
+			return connectionInfo, errors.New(connectionError.Error)
+		}
 		return connectionInfo, errors.ErrBadRequest
 	case 404:
 		return connectionInfo, errors.ErrNotFound

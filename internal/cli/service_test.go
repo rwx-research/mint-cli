@@ -835,7 +835,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			runID = fmt.Sprintf("run-%d", GinkgoRandomSeed())
 
 			debugConfig = cli.DebugTaskConfig{
-				RunURL: fmt.Sprintf("https://cloud.rwx.com/mint/rwx/runs/%s", runID),
+				DebugKey: runID,
 			}
 
 			mockAPI.MockGetDebugConnectionInfo = func(runId string) (api.DebugConnectionInfo, error) {

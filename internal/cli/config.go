@@ -31,12 +31,12 @@ func (c Config) Validate() error {
 }
 
 type DebugTaskConfig struct {
-	RunURL string
+	DebugKey string
 }
 
 func (c DebugTaskConfig) Validate() error {
-	if c.RunURL == "" {
-		return errors.New("missing Mint run URL")
+	if c.DebugKey == "" {
+		return errors.New("you must specify a run ID, a task ID, or a Mint Cloud URL")
 	}
 
 	return nil
