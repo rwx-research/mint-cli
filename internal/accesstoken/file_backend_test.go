@@ -74,6 +74,24 @@ var _ = Describe("FileBackend", func() {
 				Expect(token).To(Equal("the-token"))
 			})
 		})
+
+		Context("when the access token file includes leading or trailing whitespace", func() {
+			BeforeEach(func() {
+				mockFS.MockOpen = func(name string) (fs.File, error) {
+					Expect(name).To(Equal("some/dir/accesstoken"))
+					return mocks.NewFile("\n  \t  the-token\t  \n \n"), nil
+				}
+			})
+
+			It("returns the token with surrounding whitespace trimmed", func() {
+				backend, err := accesstoken.NewFileBackend("some/dir", mockFS)
+				Expect(err).NotTo(HaveOccurred())
+
+				token, err := backend.Get()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(token).To(Equal("the-token"))
+			})
+		})
 	})
 
 	Describe("Set", func() {

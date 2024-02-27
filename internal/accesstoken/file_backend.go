@@ -45,7 +45,7 @@ func (f FileBackend) Get() (string, error) {
 		return "", errors.Wrapf(err, "error reading %q", filepath)
 	}
 
-	return string(contents), nil
+	return strings.TrimSpace(string(contents)), nil
 }
 
 func (f FileBackend) Set(value string) error {
