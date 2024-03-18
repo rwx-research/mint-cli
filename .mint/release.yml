@@ -125,164 +125,61 @@ tasks:
       sudo apt-get update
       sudo apt-get install zip
 
-  # These won't work until we enable dependencies between dynamic tasks
-  # - key: generate-build-tasks
-  #   use: [extract-version-details, install-yaml-package]
-  #   filter:
-  #     - bin/generate-dynamic-mint-build-tasks.js
-  #     - node_modules/*
-  #   run: node bin/generate-dynamic-mint-build-tasks.js >> "${MINT_DYNAMIC_TASKS}/tasks.yml"
-  #   env:
-  #     FULL_VERSION: ${{ tasks.extract-version-details.values.full-version }}
-
-  - key: build-mint-linux-amd64
-    use: setup-nix
+  - key: build-and-upload-binaries
+    use: [setup-nix, install-gh-cli, setup-codesigning, install-zip]
+    after: [draft-full-version-release, extract-version-details]
+    parallel:
+      key: build-and-upload-${{ matrix.os }}-${{ matrix.arch }}-binaries
+      values:
+        - os: linux
+          arch: amd64
+          new-arch: x86_64
+        - os: linux
+          arch: arm64
+          new-arch: aarch64
+        - os: darwin
+          arch: amd64
+          new-arch: x86_64
+        - os: darwin
+          arch: arm64
+          new-arch: aarch64
+        - os: windows
+          arch: amd64
+          new-arch: x86_64
+        - os: windows
+          arch: arm64
+          new-arch: aarch64
     run: |
-      GOOS=linux \
-      GOARCH=amd64 \
+      GOOS=${{ matrix.os }} \
+      GOARCH=${{ matrix.arch }} \
       CGO_ENABLED=0 \
       LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
-  - key: upload-linux-amd64-to-release
-    use: [build-mint-linux-amd64, install-gh-cli]
-    after: [draft-full-version-release, extract-version-details]
-    run: |
-      github_asset_name=$(echo "mint-linux-x86_64" | tr '[:upper:]' '[:lower:]')
+
+      if [[ ${{ matrix.os }} == "darwin" ]]; then
+        echo "$RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT" > rwx-developer-id-application-cert.pem
+
+        # first we sign the binary. This happens locally.
+        ./rcodesign sign --pem-source rwx-developer-id-application-cert.pem --code-signature-flags runtime "./mint"
+
+        # notarizing requires certain container formats, that's why we zip
+        zip -r mint.zip "./mint"
+        echo "$RWX_APPLE_APP_STORE_CONNECT_API_KEY" > rwx-apple-app-store-connect-api-key.json
+        ./rcodesign notary-submit --wait --api-key-path rwx-apple-app-store-connect-api-key.json mint.zip
+      fi
+
+      github_asset_name=$(echo "mint-${{ matrix.os }}-${{ matrix.new-arch }}" | tr '[:upper:]' '[:lower:]')
       mv "mint" "$github_asset_name"
       gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-  - key: build-mint-linux-arm64
-    use: setup-nix
-    run: |
-      GOOS=linux \
-      GOARCH=arm64 \
-      CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
-      nix develop --command mage
-  - key: upload-linux-arm64-to-release
-    use: [build-mint-linux-arm64, install-gh-cli]
-    after: [draft-full-version-release, extract-version-details]
-    run: |
-      github_asset_name=$(echo "mint-linux-aarch64" | tr '[:upper:]' '[:lower:]')
-      mv "mint" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
-    env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-  - key: build-mint-darwin-amd64
-    use: setup-nix
-    run: |
-      GOOS=darwin \
-      GOARCH=amd64 \
-      CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
-      nix develop --command mage
-  - key: notarize-amd64-binary
-    use: [setup-codesigning, install-zip, build-mint-darwin-amd64]
-    run: |
-      echo "$RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT" > rwx-developer-id-application-cert.pem
-
-      # first we sign the binary. This happens locally.
-      ./rcodesign sign --pem-source rwx-developer-id-application-cert.pem --code-signature-flags runtime "./mint"
-
-      # notarizing requires certain container formats, that's why we zip
-      zip -r mint.zip "./mint"
-      echo "$RWX_APPLE_APP_STORE_CONNECT_API_KEY" > rwx-apple-app-store-connect-api-key.json
-      ./rcodesign notary-submit --wait --api-key-path rwx-apple-app-store-connect-api-key.json mint.zip
-    env:
       CODESIGN_VERSION: 0.22.0
       RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT: "${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_CERTIFICATE }}${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_PRIVATE_KEY }}"
       RWX_APPLE_APP_STORE_CONNECT_API_KEY: ${{ secrets.RWX_APPLE_APP_STORE_CONNECT_API_KEY }}
-  - key: upload-darwin-amd64-to-release
-    use: [notarize-amd64-binary, install-gh-cli]
-    after: [draft-full-version-release, extract-version-details]
-    run: |
-      github_asset_name=$(echo "mint-darwin-x86_64" | tr '[:upper:]' '[:lower:]')
-      mv "mint" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
-    env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-  - key: build-mint-darwin-arm64
-    use: setup-nix
-    run: |
-      GOOS=darwin \
-      GOARCH=arm64 \
-      CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
-      nix develop --command mage
-  - key: notarize-arm64-binary
-    use: [setup-codesigning, install-zip, build-mint-darwin-arm64]
-    run: |
-      echo "$RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT" > rwx-developer-id-application-cert.pem
-
-      # first we sign the binary. This happens locally.
-      ./rcodesign sign --pem-source rwx-developer-id-application-cert.pem --code-signature-flags runtime "./mint"
-
-      # notarizing requires certain container formats, that's why we zip
-      zip -r mint.zip "./mint"
-      echo "$RWX_APPLE_APP_STORE_CONNECT_API_KEY" > rwx-apple-app-store-connect-api-key.json
-      ./rcodesign notary-submit --wait --api-key-path rwx-apple-app-store-connect-api-key.json mint.zip
-    env:
-      CODESIGN_VERSION: 0.22.0
-      RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT: "${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_CERTIFICATE }}${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_PRIVATE_KEY }}"
-      RWX_APPLE_APP_STORE_CONNECT_API_KEY: ${{ secrets.RWX_APPLE_APP_STORE_CONNECT_API_KEY }}
-  - key: upload-darwin-arm64-to-release
-    use: [notarize-arm64-binary, install-gh-cli]
-    after: [draft-full-version-release, extract-version-details]
-    run: |
-      github_asset_name=$(echo "mint-darwin-aarch64" | tr '[:upper:]' '[:lower:]')
-      mv "mint" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
-    env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-  - key: build-mint-windows-amd64
-    use: setup-nix
-    run: |
-      GOOS=windows \
-      GOARCH=amd64 \
-      CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
-      nix develop --command mage
-  - key: upload-windows-amd64-to-release
-    use: [build-mint-windows-amd64, install-gh-cli]
-    after: [draft-full-version-release, extract-version-details]
-    run: |
-      github_asset_name=$(echo "mint-windows-x86_64.exe" | tr '[:upper:]' '[:lower:]')
-      mv "mint.exe" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
-    env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-  - key: build-mint-windows-arm64
-    use: setup-nix
-    run: |
-      GOOS=windows \
-      GOARCH=arm64 \
-      CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
-      nix develop --command mage
-  - key: upload-windows-arm64-to-release
-    use: [build-mint-windows-arm64, install-gh-cli]
-    after: [draft-full-version-release, extract-version-details]
-    run: |
-      github_asset_name=$(echo "mint-windows-aarch64.exe" | tr '[:upper:]' '[:lower:]')
-      mv "mint.exe" "$github_asset_name"
-      gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
-    env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-
-  - key: ensure-uploads-succeeded
-    after:
-      - upload-linux-amd64-to-release
-      - upload-linux-arm64-to-release
-      - upload-darwin-amd64-to-release
-      - upload-darwin-arm64-to-release
-      - upload-windows-amd64-to-release
-      - upload-windows-arm64-to-release
-    run: exit 0
 
   - key: publish-production-release
     use: [git-clone, install-gh-cli]
-    after: [extract-version-details, ensure-uploads-succeeded]
+    after: [extract-version-details, build-and-upload-binaries]
     if: ${{ init.kind == "production" }}
     run: |
       gh release edit ${{ tasks.extract-version-details.values.full-version }} \
@@ -296,7 +193,7 @@ tasks:
     after:
       - extract-version-details
       - ensure-release-not-published
-      - ensure-uploads-succeeded
+      - build-and-upload-binaries
     if: ${{ tasks.extract-version-details.values.aliased-version != "_" }}
     run: |
       aliased_version="${{ tasks.extract-version-details.values.aliased-version }}"
