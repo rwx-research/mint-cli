@@ -168,8 +168,12 @@ tasks:
         ./rcodesign notary-submit --wait --api-key-path rwx-apple-app-store-connect-api-key.json mint.zip
       fi
 
-      github_asset_name=$(echo "mint-${{ matrix.os }}-${{ matrix.new-arch }}" | tr '[:upper:]' '[:lower:]')
-      mv "mint" "$github_asset_name"
+      extension=""
+      if [[ "${{ matrix.os }}" == "windows" ]]; then
+        extension=".exe"
+      fi
+      github_asset_name=$(echo "mint-${{ matrix.os }}-${{ matrix.new-arch }}$extension" | tr '[:upper:]' '[:lower:]')
+      mv "mint$extension" "$github_asset_name"
       gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
