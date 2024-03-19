@@ -129,7 +129,7 @@ tasks:
     use: [setup-nix, install-gh-cli, setup-codesigning, install-zip]
     after: [draft-full-version-release, extract-version-details]
     parallel:
-      key: build-and-upload-${{ matrix.os }}-${{ matrix.arch }}-binaries
+      key: build-and-upload-${{ parallel.os }}-${{ parallel.arch }}-binaries
       values:
         - os: linux
           arch: amd64
@@ -150,13 +150,13 @@ tasks:
           arch: arm64
           new-arch: aarch64
     run: |
-      GOOS=${{ matrix.os }} \
-      GOARCH=${{ matrix.arch }} \
+      GOOS=${{ parallel.os }} \
+      GOARCH=${{ parallel.arch }} \
       CGO_ENABLED=0 \
       LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
       nix develop --command mage
 
-      if [[ ${{ matrix.os }} == "darwin" ]]; then
+      if [[ ${{ parallel.os }} == "darwin" ]]; then
         echo "$RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT" > rwx-developer-id-application-cert.pem
 
         # first we sign the binary. This happens locally.
@@ -169,10 +169,10 @@ tasks:
       fi
 
       extension=""
-      if [[ "${{ matrix.os }}" == "windows" ]]; then
+      if [[ "${{ parallel.os }}" == "windows" ]]; then
         extension=".exe"
       fi
-      github_asset_name=$(echo "mint-${{ matrix.os }}-${{ matrix.new-arch }}$extension" | tr '[:upper:]' '[:lower:]')
+      github_asset_name=$(echo "mint-${{ parallel.os }}-${{ parallel.new-arch }}$extension" | tr '[:upper:]' '[:lower:]')
       mv "mint$extension" "$github_asset_name"
       gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
