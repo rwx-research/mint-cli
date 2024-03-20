@@ -1,9 +1,14 @@
 on:
   github:
     push:
-      init:
-        branch: ${{ mint.run.git.branch }}
-        commit: ${{ event.github.push.head_commit.id }}
+      - if: ${{ mint.run.git.ref =~ '^refs/heads/.+$' }}
+        init:
+          branch: ${{ mint.run.git.branch }}
+          commit: ${{ event.github.push.head_commit.id }}
+      - if: ${{ mint.run.git.ref =~ '^refs/tags/.+$' }}
+        init:
+          branch: ${{ mint.run.git.tag }} # not entirely correct, but captain in the generated bigtest tasks needs this
+          commit: ${{ event.github.push.head_commit.id }}
 
 concurrency-pools:
   - id: rwx-research/mint-cli:${{ init.branch }}
@@ -61,17 +66,6 @@ tasks:
     run: |
       nix develop --command go mod tidy
       git diff --exit-code
-  - key: kickoff-unstable-release-on-main
-    use: build-mint-cli
-    after: [unit-tests, integration-tests]
-    if: ${{ init.branch == "main" }}
-    run: |
-      ./mint run -f .mint/release.yml \
-        --init "kind=unstable" \
-        --init "commit=${{ init.commit }}" \
-        --init "version=UNSTABLE"
-    env:
-      RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
   - key: checkout-mint-testing
     call: mint/git-clone 1.1.4
     with:
