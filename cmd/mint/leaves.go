@@ -36,7 +36,7 @@ var (
 		},
 		Short: "Update all leaves to their latest (minor) version",
 		Long: "Update all leaves to their latest (minor) version.\n" +
-			"Takes a list of files as arguments, or updates all toplevel yaml files in .mint if no files are given.",
+			"Takes a list of files as arguments, or updates all toplevel YAML files in .mint if no files are given.",
 		Use: "update [flags] [file...]",
 	}
 )
