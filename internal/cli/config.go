@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
+	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/fs"
 )
@@ -94,6 +95,34 @@ func (c SetSecretsInVaultConfig) Validate() error {
 
 	if len(c.Secrets) == 0 && c.File == "" {
 		return errors.New("the secrets to set must be provided")
+	}
+
+	return nil
+}
+
+type UpdateLeavesConfig struct {
+	DefaultDir               string
+	Files                    []string
+	ReplacementVersionPicker func(versions api.LeafVersionsResult, leaf string, major string) (string, error)
+	Stdout                   io.Writer
+	Stderr                   io.Writer
+}
+
+func (c UpdateLeavesConfig) Validate() error {
+	if len(c.Files) == 0 && c.DefaultDir == "" {
+		return errors.New("a default directory must be provided if not specifying files explicitly")
+	}
+
+	if c.ReplacementVersionPicker == nil {
+		return errors.New("a replacement version picker must be provided")
+	}
+
+	if c.Stdout == nil {
+		return errors.New("a stdout interface needs to be provided")
+	}
+
+	if c.Stdout == nil {
+		return errors.New("a stderr interface needs to be provided")
 	}
 
 	return nil

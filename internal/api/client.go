@@ -289,6 +289,36 @@ func (c Client) SetSecretsInVault(cfg SetSecretsInVaultConfig) (*SetSecretsInVau
 	return &respBody, nil
 }
 
+func (c Client) GetLeafVersions() (*LeafVersionsResult, error) {
+	endpoint := "/mint/api/leaves"
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, bytes.NewBuffer([]byte{}))
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to create new HTTP request")
+	}
+
+	resp, err := c.RoundTrip(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "HTTP request failed")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		msg := extractErrorMessage(resp.Body)
+		if msg == "" {
+			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
+		}
+		return nil, errors.New(msg)
+	}
+
+	respBody := LeafVersionsResult{}
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return nil, errors.Wrap(err, "unable to parse API response")
+	}
+
+	return &respBody, nil
+}
+
 // extractErrorMessage is a small helper function for parsing an API error message
 func extractErrorMessage(reader io.Reader) string {
 	errorStruct := struct {

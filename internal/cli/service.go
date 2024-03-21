@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -296,7 +297,6 @@ func (s Service) Whoami(cfg WhoamiConfig) error {
 	return nil
 }
 
-// DebugRunConfig will connect to a running task over SSH. Key exchange is facilitated over the Cloud API.
 func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 	err := cfg.Validate()
 	if err != nil {
@@ -353,6 +353,149 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 
 	if err != nil {
 		return errors.Wrap(err, "unable to set secrets")
+	}
+
+	return nil
+}
+
+func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
+	var files []string
+
+	err := cfg.Validate()
+	if err != nil {
+		return errors.Wrap(err, "validation failed")
+	}
+
+	if len(cfg.Files) > 0 {
+		files = cfg.Files
+	} else {
+		yamlFilePathsInDirectory, err := s.yamlFilePathsInDirectory(cfg.DefaultDir)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("unable to find yaml files in directory %s", cfg.DefaultDir))
+		}
+		files = yamlFilePathsInDirectory
+	}
+
+	if len(files) == 0 {
+		return errors.New(fmt.Sprintf("no files provided, and no yaml files found in directory %s", cfg.DefaultDir))
+	}
+
+	leafReferences, err := s.findLeafReferences(files)
+	if err != nil {
+		return err
+	}
+
+	leafVersions, err := s.APIClient.GetLeafVersions()
+	if err != nil {
+		return errors.Wrap(err, "unable to fetch leaf versions")
+	}
+
+	replacements := make(map[string]string)
+	for leaf, majorVersions := range leafReferences {
+		for majorVersion, references := range majorVersions {
+			targetLeafVersion, err := cfg.ReplacementVersionPicker(*leafVersions, leaf, majorVersion)
+			if err != nil {
+				fmt.Fprintln(cfg.Stderr, err.Error())
+				continue
+			}
+
+			replacement := fmt.Sprintf("%s %s", leaf, targetLeafVersion)
+			for _, reference := range references {
+				if reference != replacement {
+					replacements[reference] = replacement
+				}
+			}
+		}
+	}
+
+	err = s.replaceInFiles(files, replacements)
+	if err != nil {
+		return errors.Wrap(err, "unable to replace leaf references")
+	}
+
+	if len(replacements) == 0 {
+		fmt.Fprintln(cfg.Stdout, "No leaves to update.")
+	} else {
+		fmt.Fprintln(cfg.Stdout, "Updated the following leaves:")
+		for original, replacement := range replacements {
+			fmt.Fprintf(cfg.Stdout, "\t%s -> %s\n", original, replacement)
+		}
+	}
+
+	return nil
+}
+
+var reLeaf = regexp.MustCompile(`([a-z0-9-]+\/[a-z0-9-]+) ([0-9]+)\.[0-9]+\.[0-9]+`)
+
+// findLeafReferences returns a map indexed with the leaf names. Each key is another map, this time indexed by
+// the major version number. Finally, the value is an array of version strings as they appeared in the source
+// file
+func (s Service) findLeafReferences(files []string) (map[string]map[string][]string, error) {
+	matches := make(map[string]map[string][]string)
+
+	for _, path := range files {
+		fd, err := s.FileSystem.Open(path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		fileContent, err := io.ReadAll(fd)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while reading %q", path)
+		}
+
+		for _, match := range reLeaf.FindAllSubmatch(fileContent, -1) {
+			fullMatch := string(match[0])
+			leaf := string(match[1])
+			majorVersion := string(match[2])
+
+			majorVersions, ok := matches[leaf]
+			if !ok {
+				majorVersions = make(map[string][]string)
+			}
+
+			if _, ok := majorVersions[majorVersion]; !ok {
+				majorVersions[majorVersion] = []string{fullMatch}
+			} else {
+				majorVersions[majorVersion] = append(majorVersions[majorVersion], fullMatch)
+			}
+
+			matches[leaf] = majorVersions
+		}
+	}
+
+	return matches, nil
+}
+
+func (s Service) replaceInFiles(files []string, replacements map[string]string) error {
+	for _, path := range files {
+		fd, err := s.FileSystem.Open(path)
+		if err != nil {
+			return errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		fileContent, err := io.ReadAll(fd)
+		if err != nil {
+			return errors.Wrapf(err, "error while reading %q", path)
+		}
+		fileContentStr := string(fileContent)
+
+		for old, new := range replacements {
+			fileContentStr = strings.ReplaceAll(fileContentStr, old, new)
+		}
+
+		fd, err = s.FileSystem.Create(path)
+		if err != nil {
+			return errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		_, err = io.WriteString(fd, fileContentStr)
+		if err != nil {
+			return errors.Wrapf(err, "error while writing %q", path)
+		}
 	}
 
 	return nil
@@ -430,7 +573,7 @@ func (s Service) findMintDirectoryPath(configuredDirectory string) (string, erro
 			return filepath.Join(workingDirectory, ".mint"), nil
 		}
 
-		if (workingDirectory == string(os.PathSeparator)) {
+		if workingDirectory == string(os.PathSeparator) {
 			return "", nil
 		}
 
@@ -447,4 +590,27 @@ func validateYAML(body string) error {
 	}
 
 	return nil
+}
+
+func PickLatestMajorVersion(versions api.LeafVersionsResult, leaf string, _ string) (string, error) {
+	latestVersion, ok := versions.LatestMajor[leaf]
+	if !ok {
+		return "", fmt.Errorf("Unable to find the leaf %q; skipping it.", leaf)
+	}
+
+	return latestVersion, nil
+}
+
+func PickLatestMinorVersion(versions api.LeafVersionsResult, leaf string, major string) (string, error) {
+	majorVersions, ok := versions.LatestMinor[leaf]
+	if !ok {
+		return "", fmt.Errorf("Unable to find the leaf %q; skipping it.", leaf)
+	}
+
+	latestVersion, ok := majorVersions[major]
+	if !ok {
+		return "", fmt.Errorf("Unable to find major version %q for leaf %q; skipping it.", major, leaf)
+	}
+
+	return latestVersion, nil
 }
