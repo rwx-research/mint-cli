@@ -1473,10 +1473,11 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("returns an error", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:     &stdout,
-						Stderr:     &stderr,
-						Files:      []string{},
-						DefaultDir: ".mint",
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{},
+						DefaultDir:               ".mint",
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).To(HaveOccurred())
@@ -1517,10 +1518,11 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("uses the default directory", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:     &stdout,
-						Stderr:     &stderr,
-						Files:      []string{},
-						DefaultDir: ".mint",
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{},
+						DefaultDir:               ".mint",
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
@@ -1533,13 +1535,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 		Context("with files", func() {
 			var originalFiles map[string]string
 			var writtenFiles map[string]*mocks.File
-			var leafVersions map[string]string
+			var majorLeafVersions map[string]string
+			var minorLeafVersions map[string]map[string]string
 			var leafError error
 
 			BeforeEach(func() {
 				originalFiles = make(map[string]string)
 				writtenFiles = make(map[string]*mocks.File)
-				leafVersions = make(map[string]string)
+				majorLeafVersions = make(map[string]string)
+				minorLeafVersions = make(map[string]map[string]string)
 				leafError = nil
 
 				mockFS.MockOpen = func(path string) (fs.File, error) {
@@ -1557,7 +1561,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				}
 				mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
 					return &api.LeafVersionsResult{
-						LatestMajor: leafVersions,
+						LatestMajor: majorLeafVersions,
+						LatestMinor: minorLeafVersions,
 					}, leafError
 				}
 			})
@@ -1570,9 +1575,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("returns an error", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout: &stdout,
-						Stderr: &stderr,
-						Files:  []string{"foo.yaml"},
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).To(HaveOccurred())
@@ -1582,7 +1588,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 			Context("when all leaves are already up-to-date", func() {
 				BeforeEach(func() {
-					leafVersions["mint/setup-node"] = "1.2.3"
+					majorLeafVersions["mint/setup-node"] = "1.2.3"
 					originalFiles["foo.yaml"] = `
 					tasks:
 						- key: foo
@@ -1592,9 +1598,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("does not change the file content", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout: &stdout,
-						Stderr: &stderr,
-						Files:  []string{"foo.yaml"},
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
@@ -1607,9 +1614,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates no leaves were updated", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout: &stdout,
-						Stderr: &stderr,
-						Files:  []string{"foo.yaml"},
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
@@ -1619,8 +1627,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 			Context("when there are leaves to update across multiple files", func() {
 				BeforeEach(func() {
-					leafVersions["mint/setup-node"] = "1.2.3"
-					leafVersions["mint/setup-ruby"] = "1.0.1"
+					majorLeafVersions["mint/setup-node"] = "1.2.3"
+					majorLeafVersions["mint/setup-ruby"] = "1.0.1"
 					originalFiles["foo.yaml"] = `
 					tasks:
 						- key: foo
@@ -1637,9 +1645,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("updates all files", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout: &stdout,
-						Stderr: &stderr,
-						Files:  []string{"foo.yaml", "bar.yaml"},
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml", "bar.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
@@ -1659,9 +1668,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates leaves were updated", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout: &stdout,
-						Stderr: &stderr,
-						Files:  []string{"foo.yaml", "bar.yaml"},
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml", "bar.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
@@ -1683,9 +1693,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("does not modify the file", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout: &stdout,
-						Stderr: &stderr,
-						Files:  []string{"foo.yaml"},
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
@@ -1698,9 +1709,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates a leaf could not be found", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout: &stdout,
-						Stderr: &stderr,
-						Files:  []string{"foo.yaml"},
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
@@ -1710,7 +1722,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 			Context("when a leaf reference is a later version than the latest major", func() {
 				BeforeEach(func() {
-					leafVersions["mint/setup-node"] = "1.0.3"
+					majorLeafVersions["mint/setup-node"] = "1.0.3"
 					originalFiles["foo.yaml"] = `
 					tasks:
 						- key: foo
@@ -1720,9 +1732,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("updates the leaf", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout: &stdout,
-						Stderr: &stderr,
-						Files:  []string{"foo.yaml"},
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
@@ -1731,6 +1744,69 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 						- key: foo
 							call: mint/setup-node 1.0.3
 					`))
+				})
+			})
+
+			Context("when a leaf reference is a major version behind the latest", func() {
+				BeforeEach(func() {
+					majorLeafVersions["mint/setup-node"] = "2.0.3"
+					minorLeafVersions["mint/setup-node"] = make(map[string]string)
+					minorLeafVersions["mint/setup-node"]["2"] = "2.0.3"
+					minorLeafVersions["mint/setup-node"]["1"] = "1.1.1"
+				})
+
+				JustBeforeEach(func() {
+					Expect(service.UpdateLeaves(cli.UpdateLeavesConfig{
+						Stdout:                   &stdout,
+						Stderr:                   &stderr,
+						Files:                    []string{"foo.yaml"},
+						ReplacementVersionPicker: cli.PickLatestMinorVersion,
+					})).To(Succeed())
+				})
+
+				Context("while referencing the latest minor version", func() {
+					BeforeEach(func() {
+						originalFiles["foo.yaml"] = `
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.1.1
+						`
+					})
+
+					It("does not modify the file", func() {
+						Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.1.1
+						`))
+					})
+
+					It("indicates no leaves were updated", func() {
+						Expect(stdout.String()).To(ContainSubstring("No leaves to update."))
+					})
+				})
+
+				Context("while not referencing the latest minor version", func() {
+					BeforeEach(func() {
+						originalFiles["foo.yaml"] = `
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.0.9
+						`
+					})
+
+					It("updates the file", func() {
+						Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+					tasks:
+						- key: foo
+							call: mint/setup-node 1.1.1
+						`))
+					})
+
+					It("indicates that a leaf was updated", func() {
+						Expect(stdout.String()).To(ContainSubstring("Updated the following leaves:"))
+						Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.9 -> mint/setup-node 1.1.1"))
+					})
 				})
 			})
 		})

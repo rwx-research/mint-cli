@@ -95,5 +95,6 @@ type SetSecretsInVaultResult struct {
 }
 
 type LeafVersionsResult struct {
-	LatestMajor map[string]string `json:"latest_major"`
+	LatestMajor map[string]string            `json:"latest_major"`
+	LatestMinor map[string]map[string]string `json:"latest_minor"`
 }

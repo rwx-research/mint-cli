@@ -13,27 +13,35 @@ var leavesCmd = &cobra.Command{
 }
 
 var (
-	Files []string
+	Files                   []string
+	AllowMajorVersionChange bool
 
 	leavesUpdateCmd = &cobra.Command{
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return requireAccessToken()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			replacementVersionPicker := cli.PickLatestMinorVersion
+			if AllowMajorVersionChange {
+				replacementVersionPicker = cli.PickLatestMajorVersion
+			}
+
 			return service.UpdateLeaves(cli.UpdateLeavesConfig{
-				Files:      args,
-				DefaultDir: ".mint",
-				Stdout:     os.Stdout,
-				Stderr:     os.Stderr,
+				Files:                    args,
+				DefaultDir:               ".mint",
+				ReplacementVersionPicker: replacementVersionPicker,
+				Stdout:                   os.Stdout,
+				Stderr:                   os.Stderr,
 			})
 		},
-		Short: "Update all leaves to their latest major version",
-		Long: "Update all leaves to their latest major version.\n" +
+		Short: "Update all leaves to their latest (minor) version",
+		Long: "Update all leaves to their latest (minor) version.\n" +
 			"Takes a list of files as arguments, or updates all toplevel yaml files in .mint if no files are given.",
 		Use: "update [flags] [file...]",
 	}
 )
 
 func init() {
+	leavesUpdateCmd.Flags().BoolVar(&AllowMajorVersionChange, "allow-major-version-change", false, "update leaves to the latest major version")
 	leavesCmd.AddCommand(leavesUpdateCmd)
 }

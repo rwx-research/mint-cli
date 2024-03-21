@@ -361,6 +361,11 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	var files []string
 
+	err := cfg.Validate()
+	if err != nil {
+		return errors.Wrap(err, "validation failed")
+	}
+
 	if len(cfg.Files) > 0 {
 		files = cfg.Files
 	} else {
@@ -386,18 +391,19 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	}
 
 	replacements := make(map[string]string)
-	for leaf, references := range leafReferences {
-		latestVersion, ok := leafVersions.LatestMajor[leaf]
-		if !ok {
-			fmt.Fprintf(cfg.Stderr, "Unable to find the leaf %q; skipping it.\n", leaf)
-			continue
-		}
+	for leaf, majorVersions := range leafReferences {
+		for majorVersion, references := range majorVersions {
+			targetLeafVersion, err := cfg.ReplacementVersionPicker(*leafVersions, leaf, majorVersion)
+			if err != nil {
+				fmt.Fprintln(cfg.Stderr, err.Error())
+				continue
+			}
 
-		replacement := fmt.Sprintf("%s %s", leaf, latestVersion)
-
-		for _, reference := range references {
-			if reference != replacement {
-				replacements[reference] = replacement
+			replacement := fmt.Sprintf("%s %s", leaf, targetLeafVersion)
+			for _, reference := range references {
+				if reference != replacement {
+					replacements[reference] = replacement
+				}
 			}
 		}
 	}
@@ -419,10 +425,13 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	return nil
 }
 
-var reLeaf = regexp.MustCompile(`([a-z0-9-]+\/[a-z0-9-]+) ([0-9]+\.[0-9]+\.[0-9]+)`)
+var reLeaf = regexp.MustCompile(`([a-z0-9-]+\/[a-z0-9-]+) ([0-9]+)\.[0-9]+\.[0-9]+`)
 
-func (s Service) findLeafReferences(files []string) (map[string]([]string), error) {
-	matches := make(map[string]([]string))
+// findLeafReferences returns a map indexed with the leaf names. Each key is another map, this time indexed by
+// the major version number. Finally, the value is an array of version strings as they appeared in the source
+// file
+func (s Service) findLeafReferences(files []string) (map[string]map[string][]string, error) {
+	matches := make(map[string]map[string][]string)
 
 	for _, path := range files {
 		fd, err := s.FileSystem.Open(path)
@@ -439,11 +448,20 @@ func (s Service) findLeafReferences(files []string) (map[string]([]string), erro
 		for _, match := range reLeaf.FindAllSubmatch(fileContent, -1) {
 			fullMatch := string(match[0])
 			leaf := string(match[1])
-			if _, ok := matches[leaf]; !ok {
-				matches[leaf] = []string{fullMatch}
-			} else {
-				matches[leaf] = append(matches[leaf], fullMatch)
+			majorVersion := string(match[2])
+
+			majorVersions, ok := matches[leaf]
+			if !ok {
+				majorVersions = make(map[string][]string)
 			}
+
+			if _, ok := majorVersions[majorVersion]; !ok {
+				majorVersions[majorVersion] = []string{fullMatch}
+			} else {
+				majorVersions[majorVersion] = append(majorVersions[majorVersion], fullMatch)
+			}
+
+			matches[leaf] = majorVersions
 		}
 	}
 
@@ -555,7 +573,7 @@ func (s Service) findMintDirectoryPath(configuredDirectory string) (string, erro
 			return filepath.Join(workingDirectory, ".mint"), nil
 		}
 
-		if (workingDirectory == string(os.PathSeparator)) {
+		if workingDirectory == string(os.PathSeparator) {
 			return "", nil
 		}
 
@@ -572,4 +590,27 @@ func validateYAML(body string) error {
 	}
 
 	return nil
+}
+
+func PickLatestMajorVersion(versions api.LeafVersionsResult, leaf string, _ string) (string, error) {
+	latestVersion, ok := versions.LatestMajor[leaf]
+	if !ok {
+		return "", fmt.Errorf("Unable to find the leaf %q; skipping it.", leaf)
+	}
+
+	return latestVersion, nil
+}
+
+func PickLatestMinorVersion(versions api.LeafVersionsResult, leaf string, major string) (string, error) {
+	majorVersions, ok := versions.LatestMinor[leaf]
+	if !ok {
+		return "", fmt.Errorf("Unable to find the leaf %q; skipping it.", leaf)
+	}
+
+	latestVersion, ok := majorVersions[major]
+	if !ok {
+		return "", fmt.Errorf("Unable to find major version %q for leaf %q; skipping it.", major, leaf)
+	}
+
+	return latestVersion, nil
 }
