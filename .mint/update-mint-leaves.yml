@@ -1,0 +1,62 @@
+on:
+  cron:
+    - key: update-mint-leaf-versions-in-configs
+      schedule: '2 2 * * *'
+      title: Update Mint leaf versions
+      init:
+        commit-sha: ${{ event.cron.git.sha }}
+
+tasks:
+  - key: mint-cli
+    call: mint/install-cli 1.0.3
+
+  - key: github-cli
+    call: github/install-cli 1.0.0
+
+  - key: code
+    call: mint/git-clone 1.1.12
+    with:
+      repository: https://github.com/rwx-research/mint-cli.git
+      ref: ${{ init.commit-sha }}
+      preserve-git-dir: true
+      github-access-token: ${{ vaults.mint_leaves_update.github-apps.mint-rwx-mint-leaves-update.token }}
+
+  - key: update-leaves
+    use: [mint-cli, github-cli, code]
+    cache: false
+    run: |
+      pr_number="$(gh pr list --author '@me' --label mint-leaves-update --json number --jq 'max_by(.number) | .number')"
+      if [ -n "$pr_number" ]; then
+        printf "$pr_number" > "$MINT_VALUES/existing-pr"
+        gh pr checkout "$pr_number"
+      else
+        touch "$MINT_VALUES/existing-pr"
+        branch="mint-leaves-update-$(date +%s)"
+        git checkout -b "$branch"
+      fi
+
+      mint leaves update --allow-major-version-change
+
+      if [ -n "$(git status --porcelain)" ]; then
+        git add -u
+        git commit -m "Update Mint leaves to the latest version."
+        git push -u origin "$(git rev-parse --abbrev-ref HEAD)"
+        printf "true" > "$MINT_VALUES/has-changes"
+      else
+        echo "No changes detected"
+        printf "false" > "$MINT_VALUES/has-changes"
+      fi
+    outputs:
+      values: [existing-pr, has-changes]
+    env:
+      GITHUB_TOKEN: ${{ vaults.mint_leaves_update.github-apps.mint-rwx-mint-leaves-update.token }}
+      RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
+
+  - key: create-pr
+    use: update-leaves
+    if: ${{ tasks.update-leaves.values.has-changes == "true" && tasks.update-leaves.values.existing-pr == "" }}
+    run: |
+      gh label create mint-leaves-update --color 298F21 --force
+      gh pr create --fill --label mint-leaves-update
+    env:
+      GITHUB_TOKEN: ${{ vaults.mint_leaves_update.github-apps.mint-rwx-mint-leaves-update.token }}
