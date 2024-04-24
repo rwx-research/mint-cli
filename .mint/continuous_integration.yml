@@ -17,55 +17,61 @@ concurrency-pools:
     on-overflow: cancel-running
 
 tasks:
-  - key: git-clone
+  - key: code
     call: mint/git-clone 1.1.4
     with:
       preserve-git-dir: "true"
       repository: git@github.com:rwx-research/mint-cli.git
       ref: ${{ init.commit }}
       ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
-  - key: setup-nix
-    use: git-clone
+
+  - key: go
+    call: mint/install-go 1.0.6
+    with:
+      go-version: 1.22.1
+
+  - key: golangci-lint
+    use: go
     run: |
-      sh <(curl -L https://nixos.org/nix/install) --no-daemon
-      mkdir -p /home/ubuntu/.config/nix
-      echo "experimental-features = nix-command flakes" >> /home/ubuntu/.config/nix/nix.conf
-      . /home/ubuntu/.nix-profile/etc/profile.d/nix.sh
-      nix develop --command echo "Nix installed successfully"
+      curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sudo sh -s -- -b /usr/local/bin v1.57.2
+
+  - key: go-deps
+    use: [code, go]
+    run: go mod download
     filter:
-      - flake.nix
-      - flake.lock
-  - key: download-go-dependencies
-    use: setup-nix
-    run: nix develop --command go mod download
+      - go.mod
+      - go.sum
+
   - key: unit-tests
-    use: download-go-dependencies
+    use: go-deps
     run: |
       CGO_ENABLED=0 \
       LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-${{ init.commit }}" \
-      nix develop --command mage test
+      go run ./tools/mage test
+
   - key: build-mint-cli
-    use: download-go-dependencies
+    use: go-deps
     run: |
       CGO_ENABLED=0 \
         LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-${{ init.commit }}" \
-        nix develop --command mage build
+        go run ./tools/mage build
+
   - key: integration-tests
     use: build-mint-cli
     run: ./mint run --debug -f test/hello-world.mint.yaml
     env:
       RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
-  - key: lint-go
-    use: download-go-dependencies
-    run: nix develop --command mage lint
-  - key: lint-nix
-    use: setup-nix
-    run: nix fmt -- --check flake.nix
+
+  - key: lint
+    use: [golangci-lint, go-deps]
+    run: go run ./tools/mage lint
+
   - key: go-mod-tidy
-    use: download-go-dependencies
+    use: go-deps
     run: |
-      nix develop --command go mod tidy
+      go mod tidy
       git diff --exit-code
+
   - key: checkout-mint-testing
     call: mint/git-clone 1.1.4
     with:
@@ -73,11 +79,13 @@ tasks:
       repository: git@github.com:rwx-research/mint-testing.git
       ref: main
       ssh-key: ${{ secrets.SSH_KEY_MINT_TESTING_REPO }}
+
   - key: install-jq
     run: |
       sudo apt-get update
       sudo apt-get install jq
       sudo apt-get clean
+
   - key: run-mint-testing-tests
     use: [checkout-mint-testing, install-jq, build-mint-cli]
     run: |
