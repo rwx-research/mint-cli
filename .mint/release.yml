@@ -26,6 +26,7 @@ tasks:
       if [[ $kind == "production" ]]; then
         echo "${{ init.version }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || (echo "Version number is not formatted as vX.X.X" && false)
       fi
+
   - key: extract-version-details
     after: verify-inputs
     outputs:
@@ -50,6 +51,7 @@ tasks:
 
       printf "$fullVersion" > "$MINT_VALUES/full-version"
       printf "$aliasedVersion" > "$MINT_VALUES/aliased-version"
+
   - key: git-clone
     call: mint/git-clone 1.1.4
     after: verify-inputs
@@ -58,6 +60,7 @@ tasks:
       repository: git@github.com:rwx-research/mint-cli.git
       ref: ${{ init.commit }}
       ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+
   - key: install-gh-cli
     run: |
       curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -78,6 +81,7 @@ tasks:
       fi
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
+
   - key: draft-full-version-release
     use: [git-clone, install-gh-cli]
     after: [extract-version-details, ensure-release-not-published]
@@ -95,6 +99,7 @@ tasks:
     env:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
       GIT_SSH_KEY: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+
   - key: setup-nix
     use: git-clone
     run: |
@@ -106,20 +111,24 @@ tasks:
     filter:
       - flake.nix
       - flake.lock
+
   - key: setup-codesigning
     run: |
       curl -fsSLO https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.22.0/apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz
       tar xzvf apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz --strip-components=1
+
   - key: setup-node
     use: git-clone
     filter: [.node-version]
     call: mint/install-node 1.0.3
     with:
       node-version-file: .node-version
+
   - key: install-yaml-package
     use: setup-node
     filter: []
     run: npm install yaml@2.3.4
+
   - key: install-zip
     run: |
       sudo apt-get update

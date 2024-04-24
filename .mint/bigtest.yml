@@ -24,24 +24,27 @@ tool-cache:
   vault: mint_cli_main
 
 tasks:
-  - key: clone
-    call: mint/git-clone 1.1.4
+  - key: code
+    call: mint/git-clone 1.1.12
     with:
-      repository: git@github.com:rwx-research/mint.git
+      repository: https://github.com/rwx-research/mint.git
       ref: main
-      ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_REPO }}
-  - key: setup-node
-    use: clone
+      github-access-token: ${{ secrets.RWX_RESEARCH_CLONE_TOKEN }}
+
+  - key: node
+    use: code
     call: mint/install-node 1.0.3
     with:
       node-version-file: .node-version
     filter:
       - .node-version
+
   - key: install-yaml
     use:
-      key: setup-node
+      key: node
       exact-filesystem: true
     run: npm install -g yaml
+
   - key: generate-bigtest
     use: install-yaml
     run: NODE_PATH=$(npm root -g) node .mint/generate-bigtest-tasks.js >> "${MINT_DYNAMIC_TASKS}/tasks.yml"
