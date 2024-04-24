@@ -27,6 +27,11 @@ tasks:
         echo "${{ init.version }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || (echo "Version number is not formatted as vX.X.X" && false)
       fi
 
+  - key: go
+    call: mint/install-go 1.0.6
+    with:
+      go-version: 1.22.1
+
   - key: extract-version-details
     after: verify-inputs
     outputs:
@@ -52,14 +57,21 @@ tasks:
       printf "$fullVersion" > "$MINT_VALUES/full-version"
       printf "$aliasedVersion" > "$MINT_VALUES/aliased-version"
 
-  - key: git-clone
-    call: mint/git-clone 1.1.4
+  - key: code
+    call: mint/git-clone 1.1.14
     after: verify-inputs
     with:
       preserve-git-dir: "true"
       repository: git@github.com:rwx-research/mint-cli.git
       ref: ${{ init.commit }}
       ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+
+  - key: go-deps
+    use: [go, code]
+    run: go mod download
+    filter:
+      - go.mod
+      - go.sum
 
   - key: install-gh-cli
     run: |
@@ -69,7 +81,7 @@ tasks:
       && sudo apt-get update \
       && sudo apt-get install gh
   - key: ensure-release-not-published
-    use: [git-clone, install-gh-cli]
+    use: [install-gh-cli, code]
     run: |
       release_not_published=$(gh release view ${{ tasks.extract-version-details.values.full-version }} \
         --json isDraft \
@@ -83,7 +95,7 @@ tasks:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
 
   - key: draft-full-version-release
-    use: [git-clone, install-gh-cli]
+    use: [install-gh-cli, code]
     after: [extract-version-details, ensure-release-not-published]
     run: |
       full_version="${{ tasks.extract-version-details.values.full-version }}"
@@ -100,25 +112,13 @@ tasks:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
       GIT_SSH_KEY: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
 
-  - key: setup-nix
-    use: git-clone
-    run: |
-      sh <(curl -L https://nixos.org/nix/install) --no-daemon
-      mkdir -p /home/ubuntu/.config/nix
-      echo "experimental-features = nix-command flakes" >> /home/ubuntu/.config/nix/nix.conf
-      . /home/ubuntu/.nix-profile/etc/profile.d/nix.sh
-      nix develop --command echo "Nix installed successfully"
-    filter:
-      - flake.nix
-      - flake.lock
-
   - key: setup-codesigning
     run: |
       curl -fsSLO https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.22.0/apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz
       tar xzvf apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz --strip-components=1
 
   - key: setup-node
-    use: git-clone
+    use: code
     filter: [.node-version]
     call: mint/install-node 1.0.3
     with:
@@ -135,7 +135,7 @@ tasks:
       sudo apt-get install zip
 
   - key: build-and-upload-binaries
-    use: [setup-nix, install-gh-cli, setup-codesigning, install-zip]
+    use: [install-gh-cli, setup-codesigning, install-zip, code, go-deps]
     after: [draft-full-version-release, extract-version-details]
     parallel:
       key: build-and-upload-${{ parallel.os }}-${{ parallel.arch }}-binaries
@@ -163,7 +163,7 @@ tasks:
       GOARCH=${{ parallel.arch }} \
       CGO_ENABLED=0 \
       LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
-      nix develop --command mage
+      go run ./tools/mage
 
       if [[ ${{ parallel.os }} == "darwin" ]]; then
         echo "$RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT" > rwx-developer-id-application-cert.pem
@@ -191,7 +191,7 @@ tasks:
       RWX_APPLE_APP_STORE_CONNECT_API_KEY: ${{ secrets.RWX_APPLE_APP_STORE_CONNECT_API_KEY }}
 
   - key: publish-production-release
-    use: [git-clone, install-gh-cli]
+    use: [install-gh-cli, code]
     after: [extract-version-details, build-and-upload-binaries]
     if: ${{ init.kind == "production" }}
     run: |
@@ -202,7 +202,7 @@ tasks:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
 
   - key: update-aliased-version-release
-    use: [git-clone, install-gh-cli]
+    use: [install-gh-cli, code]
     after:
       - extract-version-details
       - ensure-release-not-published
