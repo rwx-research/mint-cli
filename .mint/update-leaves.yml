@@ -1,0 +1,14 @@
+on:
+  cron:
+    - key: update-leaves
+      schedule: '20 2 * * *'
+      init:
+        sha: ${{ event.cron.git.sha }}
+
+tasks:
+  - key: update
+    call: mint/update-leaves-github 1.0.1
+    with:
+      repository: https://github.com/rwx-research/mint-cli.git
+      ref: ${{ init.sha }}
+      github-access-token: ${{ vaults.mint_leaves_update.github-apps.mint-rwx-mint-leaves-update.token }}
