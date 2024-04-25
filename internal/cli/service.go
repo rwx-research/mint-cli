@@ -418,7 +418,12 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	} else {
 		fmt.Fprintln(cfg.Stdout, "Updated the following leaves:")
 		for original, replacement := range replacements {
-			fmt.Fprintf(cfg.Stdout, "\t%s → %s\n", original, replacement)
+			replacementParts := strings.Split(replacement, " ")
+			if len(replacementParts) == 2 {
+				fmt.Fprintf(cfg.Stdout, "\t%s → %s\n", original, replacementParts[1])
+			} else {
+				fmt.Fprintf(cfg.Stdout, "\t%s → %s\n", original, replacement)
+			}
 		}
 	}
 

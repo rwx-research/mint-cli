@@ -1676,9 +1676,9 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 					Expect(err).NotTo(HaveOccurred())
 					Expect(stdout.String()).To(ContainSubstring("Updated the following leaves:"))
-					Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 → mint/setup-node 1.2.3"))
-					Expect(stdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → mint/setup-ruby 1.0.1"))
-					Expect(stdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → mint/setup-ruby 1.0.1"))
+					Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 → 1.2.3"))
+					Expect(stdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → 1.0.1"))
+					Expect(stdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → 1.0.1"))
 				})
 			})
 
@@ -1805,7 +1805,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 					It("indicates that a leaf was updated", func() {
 						Expect(stdout.String()).To(ContainSubstring("Updated the following leaves:"))
-						Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.9 → mint/setup-node 1.1.1"))
+						Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.9 → 1.1.1"))
 					})
 				})
 			})
