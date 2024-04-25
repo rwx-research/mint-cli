@@ -1,0 +1,31 @@
+on:
+  github:
+    push:
+      if: ${{ mint.run.git.branch == 'main' }}
+      init:
+        commit-sha: ${{ event.github.push.head_commit.id }}
+
+concurrency-pools:
+  - id: rwx-research/mint-cli:main
+    capacity: 1
+    on-overflow: cancel-waiting
+
+tasks:
+  - key: ci
+    call: ${{ run.mint-dir }}/ci.yml
+    init:
+      commit: ${{ init.commit-sha }}
+
+  - key: bigtest
+    call: ${{ run.mint-dir }}/bigtest.yml
+    init:
+      commit-sha: ${{ init.commit-sha }}
+
+  - key: release-unstable
+    after: [ci, bigtest]
+    call: ${{ run.mint-dir }}/release.yml
+    init:
+      kind: unstable
+      commit: ${{ event.github.push.head_commit.id }}
+      version: UNSTABLE
+

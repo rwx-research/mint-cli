@@ -1,0 +1,22 @@
+on:
+  github:
+    pull_request:
+      init:
+        commit-sha: ${{ event.github.pull_request.pull_request.head.sha }}
+        pr-number: ${{ event.github.pull_request.number }}
+
+concurrency-pools:
+  - id: rwx-research/mint-cli:pr-${{ init.pr-number }}
+    capacity: 1
+    on-overflow: cancel-running
+
+tasks:
+  - key: ci
+    call: ${{ run.mint-dir }}/continuous_integration.yml
+    init:
+      commit: ${{ init.commit-sha }}
+
+  - key: bigtest
+    call: ${{ run.mint-dir }}/bigtest.yml
+    init:
+      commit-sha: ${{ init.commit-sha }}
