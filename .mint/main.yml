@@ -1,0 +1,37 @@
+on:
+  github:
+    push:
+      if: ${{ mint.run.git.branch == 'main' }}
+      init:
+        branch: ${{ event.github.push.ref }}
+        commit-message: ${{ event.github.push.head_commit.message }}
+        commit-sha: ${{ event.github.push.head_commit.id }}
+        username: ${{ event.github.push.sender.login }}
+
+concurrency-pools:
+  - id: rwx-research/mint-cli:main
+    capacity: 1
+    on-overflow: cancel-waiting
+
+tasks:
+  - key: ci
+    call: ${{ run.mint-dir }}/continuous_integration.yml
+    init:
+      commit: ${{ init.commit-sha }}
+
+  - key: bigtest
+    call: ${{ run.mint-dir }}/bigtest.yml
+    init:
+      branch: ${{ init.branch }}
+      commit-message: ${{ init.commit-message }}
+      commit-sha: ${{ init.commit-sha }}
+      username: ${{ init.username }}
+
+  - key: release-unstable
+    after: [ci, bigtest]
+    call: ${{ run.mint-dir }}/release.yml
+    init:
+      kind: unstable
+      commit: ${{ init.commit-sha }}
+      version: UNSTABLE
+

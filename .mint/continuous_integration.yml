@@ -1,21 +1,3 @@
-on:
-  github:
-    push:
-      - if: ${{ mint.run.git.ref =~ '^refs/heads/.+$' }}
-        init:
-          branch: ${{ mint.run.git.branch }}
-          commit: ${{ event.github.push.head_commit.id }}
-      - if: ${{ mint.run.git.ref =~ '^refs/tags/.+$' }}
-        init:
-          branch: ${{ mint.run.git.tag }} # not entirely correct, but captain in the generated bigtest tasks needs this
-          commit: ${{ event.github.push.head_commit.id }}
-
-concurrency-pools:
-  - id: rwx-research/mint-cli:${{ init.branch }}
-    if: ${{ init.branch != "main" }}
-    capacity: 1
-    on-overflow: cancel-running
-
 tasks:
   - key: code
     call: mint/git-clone 1.1.4
