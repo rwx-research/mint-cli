@@ -53,7 +53,7 @@ tasks:
       printf "$aliasedVersion" > "$MINT_VALUES/aliased-version"
 
   - key: git-clone
-    call: mint/git-clone 1.1.14
+    call: mint/git-clone 1.2.0
     after: verify-inputs
     with:
       preserve-git-dir: "true"
