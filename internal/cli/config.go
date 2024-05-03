@@ -54,6 +54,10 @@ type InitiateRunConfig struct {
 }
 
 func (c InitiateRunConfig) Validate() error {
+	if c.MintFilePath == "" {
+		return errors.New("the path to a mint-file must be provided using the --file flag.")
+	}
+
 	return nil
 }
 

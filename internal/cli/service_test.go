@@ -316,150 +316,15 @@ var _ = Describe("CLI Service", func() {
 		})
 
 		Context("with no specific mint file and no specific directory", func() {
-			Context("when a directory with files is found", func() {
-				var originalMintDirFileContent string
-				var receivedTaskDefinitionsFileContent string
-				var receivedMintDirFileContent string
-
-				BeforeEach(func() {
-					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
-					receivedTaskDefinitionsFileContent = ""
-					receivedMintDirFileContent = ""
-					runConfig.MintFilePath = ""
-					runConfig.MintDirectory = ""
-
-					mockFS.MockGetwd = func() (string, error) {
-						return "/some/path/to/working/directory", nil
-					}
-					mockFS.MockExists = func(name string) (bool, error) {
-						return name == "/some/path/to/.mint", nil
-					}
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("/some/path/to/.mint"))
-						return []fs.DirEntry{
-							mocks.DirEntry{FileName: "mintdir-tasks.yml"},
-							mocks.DirEntry{FileName: "mintdir-tasks.json"},
-						}, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "/some/path/to/.mint/mintdir-tasks.yml" {
-							file := mocks.NewFile(originalMintDirFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
-					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
-						Expect(cfg.TaskDefinitions).To(HaveLen(1))
-						// note that this is relative to cwd
-						Expect(cfg.TaskDefinitions[0].Path).To(Equal("../../.mint/mintdir-tasks.yml"))
-						Expect(cfg.MintDirectory).To(HaveLen(1))
-						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint/mintdir-tasks.yml"))
-						Expect(cfg.UseCache).To(BeTrue())
-						receivedTaskDefinitionsFileContent = cfg.TaskDefinitions[0].FileContents
-						receivedMintDirFileContent = cfg.MintDirectory[0].FileContents
-						return &api.InitiateRunResult{
-							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							TargetedTaskKeys: []string{},
-							DefinitionPath:   ".mint/mint.yml",
-						}, nil
-					}
-				})
-
-				JustBeforeEach(func() {
-					_, err := service.InitiateRun(runConfig)
-					Expect(err).ToNot(HaveOccurred())
-				})
-
-				It("sends the file contents to cloud", func() {
-					Expect(receivedTaskDefinitionsFileContent).To(Equal(originalMintDirFileContent))
-					Expect(receivedMintDirFileContent).To(Equal(originalMintDirFileContent))
-				})
+			BeforeEach(func() {
+				runConfig.MintFilePath = ""
+				runConfig.MintDirectory = ""
 			})
 
-			Context("when a directory with invalid files is found", func() {
-				var originalMintDirFileContent string
-
-				BeforeEach(func() {
-					originalMintDirFileContent = "NOT YAML!!!!!!!!"
-					runConfig.MintFilePath = ""
-					runConfig.MintDirectory = ""
-
-					mockFS.MockGetwd = func() (string, error) {
-						return "/some/path/to/working/directory", nil
-					}
-					mockFS.MockExists = func(name string) (bool, error) {
-						return name == "/some/path/to/.mint", nil
-					}
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("/some/path/to/.mint"))
-						return []fs.DirEntry{
-							mocks.DirEntry{FileName: "mintdir-tasks.yml"},
-							mocks.DirEntry{FileName: "mintdir-tasks.json"},
-						}, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "/some/path/to/.mint/mintdir-tasks.yml" {
-							file := mocks.NewFile(originalMintDirFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
-				})
-
-				It("returns an error", func() {
-					_, err := service.InitiateRun(runConfig)
-					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("unable to parse"))
-				})
-			})
-
-			Context("when an empty directory is found", func() {
-				BeforeEach(func() {
-					runConfig.MintFilePath = ""
-					runConfig.MintDirectory = ""
-
-					mockFS.MockGetwd = func() (string, error) {
-						return "/some/path/to/working/directory", nil
-					}
-					mockFS.MockExists = func(name string) (bool, error) {
-						return name == "/some/path/to/.mint", nil
-					}
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("/some/path/to/.mint"))
-						return []fs.DirEntry{}, nil
-					}
-				})
-
-				It("returns an error", func() {
-					_, err := service.InitiateRun(runConfig)
-					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("No run definitions provided"))
-				})
-			})
-
-			Context("when a directory is not found", func() {
-				BeforeEach(func() {
-					runConfig.MintFilePath = ""
-					runConfig.MintDirectory = ""
-
-					mockFS.MockGetwd = func() (string, error) {
-						return "/some/path/to/working/directory", nil
-					}
-					mockFS.MockExists = func(name string) (bool, error) {
-						return false, nil
-					}
-				})
-
-				It("returns an error", func() {
-					_, err := service.InitiateRun(runConfig)
-					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("No run definitions provided"))
-				})
+			It("returns an error", func() {
+				_, err := service.InitiateRun(runConfig)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("the path to a mint-file must be provided"))
 			})
 		})
 
@@ -681,129 +546,15 @@ var _ = Describe("CLI Service", func() {
 		})
 
 		Context("with no specific mint file and a specific directory", func() {
-			Context("when a directory with files is found", func() {
-				var originalMintDirFileContent string
-				var receivedTaskDefinitionsFileContent string
-				var receivedMintDirFileContent string
-
-				BeforeEach(func() {
-					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
-					receivedTaskDefinitionsFileContent = ""
-					receivedMintDirFileContent = ""
-					runConfig.MintFilePath = ""
-					runConfig.MintDirectory = "some-dir"
-
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("some-dir"))
-						return []fs.DirEntry{
-							mocks.DirEntry{FileName: "mintdir-tasks.yml"},
-							mocks.DirEntry{FileName: "mintdir-tasks.json"},
-						}, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "some-dir/mintdir-tasks.yml" {
-							file := mocks.NewFile(originalMintDirFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
-					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
-						Expect(cfg.TaskDefinitions).To(HaveLen(1))
-						// note that this is the _specified_ dir and path to the file
-						Expect(cfg.TaskDefinitions[0].Path).To(Equal("some-dir/mintdir-tasks.yml"))
-						Expect(cfg.MintDirectory).To(HaveLen(1))
-						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint/mintdir-tasks.yml"))
-						Expect(cfg.UseCache).To(BeTrue())
-						receivedTaskDefinitionsFileContent = cfg.TaskDefinitions[0].FileContents
-						receivedMintDirFileContent = cfg.MintDirectory[0].FileContents
-						return &api.InitiateRunResult{
-							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
-							TargetedTaskKeys: []string{},
-							DefinitionPath:   ".mint/mint.yml",
-						}, nil
-					}
-				})
-
-				JustBeforeEach(func() {
-					_, err := service.InitiateRun(runConfig)
-					Expect(err).ToNot(HaveOccurred())
-				})
-
-				It("sends the file contents to cloud", func() {
-					Expect(receivedTaskDefinitionsFileContent).To(Equal(originalMintDirFileContent))
-					Expect(receivedMintDirFileContent).To(Equal(originalMintDirFileContent))
-				})
+			BeforeEach(func() {
+				runConfig.MintFilePath = ""
+				runConfig.MintDirectory = "some-dir"
 			})
 
-			Context("when a directory with invalid files is found", func() {
-				var originalMintDirFileContent string
-
-				BeforeEach(func() {
-					originalMintDirFileContent = "NOT YAML!!!!!!!!"
-					runConfig.MintDirectory = "some-dir"
-
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("some-dir"))
-						return []fs.DirEntry{
-							mocks.DirEntry{FileName: "mintdir-tasks.yml"},
-							mocks.DirEntry{FileName: "mintdir-tasks.json"},
-						}, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "some-dir/mintdir-tasks.yml" {
-							file := mocks.NewFile(originalMintDirFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
-				})
-
-				It("returns an error", func() {
-					_, err := service.InitiateRun(runConfig)
-					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("unable to parse"))
-				})
-			})
-
-			Context("when an empty directory is found", func() {
-				BeforeEach(func() {
-					runConfig.MintFilePath = ""
-					runConfig.MintDirectory = "some-dir"
-
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("some-dir"))
-						return []fs.DirEntry{}, nil
-					}
-				})
-
-				It("returns an error", func() {
-					_, err := service.InitiateRun(runConfig)
-					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("No run definitions provided"))
-				})
-			})
-
-			Context("when the directory is not found", func() {
-				BeforeEach(func() {
-					runConfig.MintFilePath = ""
-					runConfig.MintDirectory = "some-dir"
-
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("some-dir"))
-						return nil, os.ErrNotExist
-					}
-				})
-
-				It("returns an error", func() {
-					_, err := service.InitiateRun(runConfig)
-					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("could not be found"))
-				})
+			It("returns an error", func() {
+				_, err := service.InitiateRun(runConfig)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("the path to a mint-file must be provided"))
 			})
 		})
 	})
