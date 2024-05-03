@@ -18,7 +18,7 @@ concurrency-pools:
 
 tasks:
   - key: code
-    call: mint/git-clone 1.2.0
+    call: mint/git-clone 1.2.1
     with:
       preserve-git-dir: "true"
       repository: git@github.com:rwx-research/mint-cli.git
@@ -73,7 +73,7 @@ tasks:
       git diff --exit-code
 
   - key: checkout-mint-testing
-    call: mint/git-clone 1.2.0
+    call: mint/git-clone 1.2.1
     with:
       path: ./mint-testing
       repository: git@github.com:rwx-research/mint-testing.git
