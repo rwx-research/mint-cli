@@ -97,7 +97,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	}
 
 	mintDirectoryYamlPaths := make([]string, 0)
-	taskDefinitionYamlPaths := make([]string, 0)
+	taskDefinitionYamlPath := cfg.MintFilePath
 
 	mintDirectoryPath, err := s.findMintDirectoryPath(cfg.MintDirectory)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	if mintDirectoryPath != "" {
 		paths, err := s.yamlFilePathsInDirectory(mintDirectoryPath)
 		if err != nil {
-			if errors.Is(err, errors.ErrFileNotExists) && cfg.MintDirectory != "" {
+			if errors.Is(err, errors.ErrFileNotExists) {
 				return nil, fmt.Errorf("You specified --dir %q, but %q could not be found", cfg.MintDirectory, cfg.MintDirectory)
 			}
 
@@ -117,28 +117,12 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		mintDirectoryYamlPaths = paths
 	}
 
-	// If a file is not specified, we need to use whatever the .mint directory is as the task definitions
-	// (whether it was specified or found via traversal)
-	if cfg.MintFilePath == "" {
-		taskDefinitionYamlPaths = mintDirectoryYamlPaths
-	} else {
-		taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, cfg.MintFilePath)
-	}
-
-	if len(taskDefinitionYamlPaths) == 0 {
-		if cfg.MintDirectory != "" {
-			return nil, fmt.Errorf("No run definitions provided! Add a run definition to %q, or use --file", cfg.MintDirectory)
-		} else {
-			return nil, errors.New("No run definitions provided! Add a run definition to your .mint directory, or use --file")
-		}
-	}
-
 	mintDirectory, err := s.taskDefinitionsFromPaths(mintDirectoryYamlPaths)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
 	}
 
-	taskDefinitions, err := s.taskDefinitionsFromPaths(taskDefinitionYamlPaths)
+	taskDefinitions, err := s.taskDefinitionsFromPaths([]string{taskDefinitionYamlPath})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
 	}
@@ -163,26 +147,6 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		}
 		taskDefinition.Path = filepath.Join(".mint", relPath)
 		mintDirectory[i] = taskDefinition
-	}
-
-	// A fully implicit invocation results in traversing the working directory for a .mint directory
-	// When we find one, regardless of the distance, we use it as the task definitions
-	// In that case, we want to make the paths relative to the working directory so it's clear where the
-	// definitions are defined
-	if cfg.MintDirectory == "" && cfg.MintFilePath == "" {
-		wd, err := s.FileSystem.Getwd()
-		if err != nil {
-			return nil, errors.Wrap(err, "unable to determine the working directory")
-		}
-
-		for i, taskDefinition := range taskDefinitions {
-			relPath, err := filepath.Rel(wd, taskDefinition.Path)
-			if err != nil {
-				return nil, errors.Wrapf(err, "unable to determine relative path of %q", taskDefinition.Path)
-			}
-			taskDefinition.Path = relPath
-			taskDefinitions[i] = taskDefinition
-		}
 	}
 
 	i := 0
