@@ -22,7 +22,7 @@ var (
 	MintFilePath   string
 	NoCache        bool
 	Open           bool
-	Title					 string
+	Title          string
 
 	runCmd = &cobra.Command{
 		PreRunE: func(cmd *cobra.Command, args []string) error {
@@ -63,7 +63,7 @@ var (
 				MintFilePath:   MintFilePath,
 				NoCache:        NoCache,
 				TargetedTasks:  targetedTasks,
-				Title:					Title,
+				Title:          Title,
 			})
 			if err != nil {
 				return err
@@ -108,7 +108,7 @@ var (
 func init() {
 	runCmd.Flags().BoolVar(&NoCache, "no-cache", false, "do not read or write to the cache")
 	runCmd.Flags().StringArrayVar(&InitParameters, flagInit, []string{}, "initialization parameters for the run, available in the `init` context. Can be specified multiple times")
-	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions")
+	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions (required)")
 	runCmd.Flags().StringVarP(&MintDirectory, "dir", "d", "", "the directory your Mint files are located in, typicalling `.mint`. By default, the CLI traverses up until it finds a `.mint` directory.")
 	runCmd.Flags().BoolVar(&Open, "open", false, "open the run in a browser")
 	runCmd.Flags().StringVar(&Title, "title", "", "the title the UI will display for the Mint run")
