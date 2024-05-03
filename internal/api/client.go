@@ -77,6 +77,10 @@ func (c Client) GetDebugConnectionInfo(debugKey string) (DebugConnectionInfo, er
 	case 404:
 		return connectionInfo, errors.ErrNotFound
 	case 410:
+		connectionError := DebugConnectionInfoError{}
+		if err := json.NewDecoder(resp.Body).Decode(&connectionError); err == nil {
+			return connectionInfo, errors.New(connectionError.Error)
+		}
 		return connectionInfo, errors.ErrGone
 	default:
 		return connectionInfo, errors.New(fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
