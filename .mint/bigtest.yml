@@ -25,7 +25,7 @@ tool-cache:
 
 tasks:
   - key: code
-    call: mint/git-clone 1.2.1
+    call: mint/git-clone 1.2.2
     with:
       repository: https://github.com/rwx-research/mint.git
       ref: main
