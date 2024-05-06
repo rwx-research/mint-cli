@@ -49,7 +49,7 @@ tasks:
       printf "$aliasedVersion" > "$MINT_VALUES/aliased-version"
 
   - key: code
-    call: mint/git-clone 1.1.14
+    call: mint/git-clone 1.2.2
     after: verify-inputs
     with:
       preserve-git-dir: "true"
@@ -111,7 +111,7 @@ tasks:
   - key: setup-node
     use: code
     filter: [.node-version]
-    call: mint/install-node 1.0.3
+    call: mint/install-node 1.0.6
     with:
       node-version-file: .node-version
 
