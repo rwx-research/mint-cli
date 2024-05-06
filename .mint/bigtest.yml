@@ -3,7 +3,7 @@ tool-cache:
 
 tasks:
   - key: code
-    call: mint/git-clone 1.1.12
+    call: mint/git-clone 1.2.2
     with:
       repository: https://github.com/rwx-research/mint.git
       ref: main
@@ -11,7 +11,7 @@ tasks:
 
   - key: node
     use: code
-    call: mint/install-node 1.0.3
+    call: mint/install-node 1.0.6
     with:
       node-version-file: .node-version
     filter:
