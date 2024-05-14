@@ -108,22 +108,11 @@ tasks:
       curl -fsSLO https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.22.0/apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz
       tar xzvf apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz --strip-components=1
 
-  - key: setup-node
-    use: code
-    filter: [.node-version]
-    call: mint/install-node 1.0.6
-    with:
-      node-version-file: .node-version
-
-  - key: install-yaml-package
-    use: setup-node
-    filter: []
-    run: npm install yaml@2.3.4
-
   - key: install-zip
     run: |
       sudo apt-get update
       sudo apt-get install zip
+      sudo apt-get clean
 
   - key: build-and-upload-binaries
     use: [install-gh-cli, setup-codesigning, install-zip, code, go-deps]
