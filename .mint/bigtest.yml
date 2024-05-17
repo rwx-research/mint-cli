@@ -7,7 +7,7 @@ tasks:
     with:
       repository: https://github.com/rwx-research/mint.git
       ref: main
-      github-access-token: ${{ secrets.RWX_RESEARCH_CLONE_TOKEN }}
+      github-access-token: ${{ github.token }}
 
   - key: tool-versions
     use: code
