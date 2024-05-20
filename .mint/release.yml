@@ -144,9 +144,9 @@ tasks:
         extension=".exe"
       fi
 
-      CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" \
-      go run ./tools/mage -compile "mint$extension" -goos ${{ parallel.os }} -goarch ${{ parallel.arch }}
+      GOOS=${{ parallel.os }} \
+      GOARCH=${{ parallel.arch }} \
+      go build -ldflags "-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" -a ./cmd/mint
 
       if [[ ${{ parallel.os }} == "darwin" ]]; then
         echo "$RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT" > rwx-developer-id-application-cert.pem
