@@ -159,6 +159,10 @@ tasks:
         echo "$RWX_APPLE_APP_STORE_CONNECT_API_KEY" > rwx-apple-app-store-connect-api-key.json
         ./rcodesign notary-submit --wait --api-key-path rwx-apple-app-store-connect-api-key.json mint.zip
       fi
+      if [[ ${{ parallel.os }} == "linux" && ${{ parallel.arch }} == "amd64" ]]; then
+        ./mint --version | grep '^mint version ${{ tasks.extract-version-details.values.full-version }}'
+        echo "true" > "$MINT_VALUES/verified-${{ parallel.os }}-${{ parallel.arch }}-binary"
+      fi
 
       github_asset_name=$(echo "mint-${{ parallel.os }}-${{ parallel.new-arch }}$extension" | tr '[:upper:]' '[:lower:]')
       mv "mint$extension" "$github_asset_name"
@@ -172,7 +176,7 @@ tasks:
   - key: publish-production-release
     use: [install-gh-cli, code]
     after: [extract-version-details, build-and-upload-binaries]
-    if: ${{ init.kind == "production" }}
+    if: ${{ init.kind == "production" && tasks.build-and-upload-binaries.tasks.build-and-upload-linux-amd64-binaries.values.verified-linux-amd64-binary == "true" }}
     run: |
       gh release edit ${{ tasks.extract-version-details.values.full-version }} \
         --draft=false \
