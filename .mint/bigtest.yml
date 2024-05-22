@@ -17,7 +17,7 @@ tasks:
       - .tool-versions
 
   - key: node
-    call: mint/install-node 1.0.6
+    call: mint/install-node 1.0.7
     with:
       node-version: ${{ tasks.tool-versions.values.nodejs }}
 
