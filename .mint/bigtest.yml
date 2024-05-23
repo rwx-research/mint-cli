@@ -3,7 +3,7 @@ tool-cache:
 
 tasks:
   - key: code
-    call: mint/git-clone 1.2.2
+    call: mint/git-clone 1.2.4
     with:
       repository: https://github.com/rwx-research/mint.git
       ref: main
@@ -17,7 +17,7 @@ tasks:
       - .tool-versions
 
   - key: node
-    call: mint/install-node 1.0.6
+    call: mint/install-node 1.0.7
     with:
       node-version: ${{ tasks.tool-versions.values.nodejs }}
 

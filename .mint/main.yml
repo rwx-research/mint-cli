@@ -1,12 +1,9 @@
 on:
   github:
     push:
-      if: ${{ mint.run.git.branch == 'main' }}
+      if: ${{event.git.branch == 'main' }}
       init:
-        branch: ${{ event.github.push.ref }}
-        commit-message: ${{ event.github.push.head_commit.message }}
-        commit-sha: ${{ event.github.push.head_commit.id }}
-        username: ${{ event.github.push.sender.login }}
+        commit-sha: ${{ event.git.sha }}
 
 concurrency-pools:
   - id: rwx-research/mint-cli:main
@@ -22,10 +19,7 @@ tasks:
   - key: bigtest
     call: ${{ run.mint-dir }}/bigtest.yml
     init:
-      branch: ${{ init.branch }}
-      commit-message: ${{ init.commit-message }}
       commit-sha: ${{ init.commit-sha }}
-      username: ${{ init.username }}
 
   - key: release-unstable
     after: [ci, bigtest]
@@ -34,4 +28,3 @@ tasks:
       kind: unstable
       commit: ${{ init.commit-sha }}
       version: UNSTABLE
-

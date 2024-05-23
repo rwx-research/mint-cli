@@ -1,13 +1,13 @@
 on:
   cron:
     - key: update-leaves
-      schedule: '20 2 * * *'
+      schedule: "20 2 * * *"
       init:
-        sha: ${{ event.cron.git.sha }}
+        sha: ${{ event.git.sha }}
 
 tasks:
   - key: update
-    call: mint/update-leaves-github 1.0.2
+    call: mint/update-leaves-github 1.0.4
     with:
       repository: https://github.com/rwx-research/mint-cli.git
       ref: ${{ init.sha }}
