@@ -161,6 +161,7 @@ tasks:
       fi
       if [[ ${{ parallel.os }} == "linux" && ${{ parallel.arch }} == "amd64" ]]; then
         ./mint --version | grep '^mint version ${{ tasks.extract-version-details.values.full-version }}'
+        # set a value to ensure this logic branch was hit
         echo "true" > "$MINT_VALUES/verified-${{ parallel.os }}-${{ parallel.arch }}-binary"
       fi
 
@@ -176,8 +177,13 @@ tasks:
   - key: publish-production-release
     use: [install-gh-cli, code]
     after: [extract-version-details, build-and-upload-binaries]
-    if: ${{ init.kind == "production" && tasks.build-and-upload-binaries.tasks.build-and-upload-linux-amd64-binaries.values.verified-linux-amd64-binary == "true" }}
+    if: ${{ init.kind == "production" }}
     run: |
+      if [[ "${{ tasks.build-and-upload-binaries.tasks.build-and-upload-linux-amd64-binaries.values.verified-linux-amd64-binary }}" != "true" ]]; then
+        echo "binary was not verified"
+        exit 1
+      fi
+
       gh release edit ${{ tasks.extract-version-details.values.full-version }} \
         --draft=false \
         --latest
