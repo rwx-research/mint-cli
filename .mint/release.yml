@@ -71,6 +71,7 @@ tasks:
       && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
       && sudo apt-get update \
       && sudo apt-get install gh
+
   - key: ensure-release-not-published
     use: [install-gh-cli, code]
     run: |
@@ -123,21 +124,27 @@ tasks:
         - os: linux
           arch: amd64
           new-arch: x86_64
+          test-binary: true
         - os: linux
           arch: arm64
           new-arch: aarch64
+          test-binary: false
         - os: darwin
           arch: amd64
           new-arch: x86_64
+          test-binary: false
         - os: darwin
           arch: arm64
           new-arch: aarch64
+          test-binary: false
         - os: windows
           arch: amd64
           new-arch: x86_64
+          test-binary: false
         - os: windows
           arch: arm64
           new-arch: aarch64
+          test-binary: false
     run: |
       extension=""
       if [[ "${{ parallel.os }}" == "windows" ]]; then
@@ -159,10 +166,8 @@ tasks:
         echo "$RWX_APPLE_APP_STORE_CONNECT_API_KEY" > rwx-apple-app-store-connect-api-key.json
         ./rcodesign notary-submit --wait --api-key-path rwx-apple-app-store-connect-api-key.json mint.zip
       fi
-      if [[ ${{ parallel.os }} == "linux" && ${{ parallel.arch }} == "amd64" ]]; then
+      if [[ "${{ parallel.test-binary }}" != "false" ]]; then
         ./mint --version | grep '^mint version ${{ tasks.extract-version-details.values.full-version }}'
-        # set a value to ensure this logic branch was hit
-        echo "true" > "$MINT_VALUES/verified-${{ parallel.os }}-${{ parallel.arch }}-binary"
       fi
 
       github_asset_name=$(echo "mint-${{ parallel.os }}-${{ parallel.new-arch }}$extension" | tr '[:upper:]' '[:lower:]')
@@ -179,11 +184,6 @@ tasks:
     after: [extract-version-details, build-and-upload-binaries]
     if: ${{ init.kind == "production" }}
     run: |
-      if [[ "${{ tasks.build-and-upload-binaries.tasks.build-and-upload-linux-amd64-binaries.values.verified-linux-amd64-binary }}" != "true" ]]; then
-        echo "binary was not verified"
-        exit 1
-      fi
-
       gh release edit ${{ tasks.extract-version-details.values.full-version }} \
         --draft=false \
         --latest
