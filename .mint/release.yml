@@ -52,10 +52,10 @@ tasks:
     call: mint/git-clone 1.2.4
     after: verify-inputs
     with:
-      preserve-git-dir: "true"
-      repository: git@github.com:rwx-research/mint-cli.git
+      preserve-git-dir: true
+      repository: https://github.com/rwx-research/mint-cli.git
       ref: ${{ init.commit }}
-      ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+      github-access-token: ${{ github.token }}
 
   - key: go-deps
     use: [go, code]
@@ -64,7 +64,7 @@ tasks:
       - go.mod
       - go.sum
 
-  - key: install-gh-cli
+  - key: gh-cli
     run: |
       curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
       && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -73,7 +73,7 @@ tasks:
       && sudo apt-get install gh
 
   - key: ensure-release-not-published
-    use: [install-gh-cli, code]
+    use: [gh-cli, code]
     run: |
       release_not_published=$(gh release view ${{ tasks.extract-version-details.values.full-version }} \
         --json isDraft \
@@ -87,7 +87,7 @@ tasks:
       GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
 
   - key: draft-full-version-release
-    use: [install-gh-cli, code]
+    use: [gh-cli, code]
     after: [extract-version-details, ensure-release-not-published]
     run: |
       full_version="${{ tasks.extract-version-details.values.full-version }}"
@@ -101,22 +101,21 @@ tasks:
         --generate-notes \
         --title "Mint CLI ${full_version}"
     env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-      GIT_SSH_KEY: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+      GH_TOKEN: ${{ github.token }}
 
-  - key: setup-codesigning
+  - key: codesigning
     run: |
       curl -fsSLO https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.22.0/apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz
       tar xzvf apple-codesign-0.22.0-x86_64-unknown-linux-musl.tar.gz --strip-components=1
 
-  - key: install-zip
+  - key: zip
     run: |
       sudo apt-get update
       sudo apt-get install zip
       sudo apt-get clean
 
   - key: build-and-upload-binaries
-    use: [install-gh-cli, setup-codesigning, install-zip, code, go-deps]
+    use: [gh-cli, codesigning, zip, code, go-deps]
     after: [draft-full-version-release, extract-version-details]
     parallel:
       key: build-and-upload-${{ parallel.os }}-${{ parallel.arch }}-binaries
@@ -174,13 +173,13 @@ tasks:
       mv "mint$extension" "$github_asset_name"
       gh release upload ${{ tasks.extract-version-details.values.full-version }} "${github_asset_name}" --clobber
     env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
       CODESIGN_VERSION: 0.22.0
       RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT: "${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_CERTIFICATE }}${{ secrets.RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT_PRIVATE_KEY }}"
       RWX_APPLE_APP_STORE_CONNECT_API_KEY: ${{ secrets.RWX_APPLE_APP_STORE_CONNECT_API_KEY }}
 
   - key: publish-production-release
-    use: [install-gh-cli, code]
+    use: [gh-cli, code]
     after: [extract-version-details, build-and-upload-binaries]
     if: ${{ init.kind == "production" }}
     run: |
@@ -188,10 +187,10 @@ tasks:
         --draft=false \
         --latest
     env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
 
   - key: update-aliased-version-release
-    use: [install-gh-cli, code]
+    use: [gh-cli, code]
     after:
       - extract-version-details
       - ensure-release-not-published
@@ -215,5 +214,4 @@ tasks:
       gh release download ${{ tasks.extract-version-details.values.full-version }}
       gh release upload "${aliased_version}" mint-* --clobber
     env:
-      GH_TOKEN: ${{ secrets.MINT_CLI_REPO_GH_TOKEN }}
-      GIT_SSH_KEY: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+      GH_TOKEN: ${{ github.token }}

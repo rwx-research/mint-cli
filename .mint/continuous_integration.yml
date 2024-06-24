@@ -1,11 +1,23 @@
+on:
+  github:
+    push:
+      init:
+        commit-sha: ${{ event.git.sha }}
+        ref: ${{ event.git.ref }}
+
+concurrency-pools:
+  - id: rwx-research/mint-cli:pr-${{ init.ref }}
+    capacity: 1
+    on-overflow: cancel-running
+
 tasks:
   - key: code
     call: mint/git-clone 1.2.4
     with:
-      preserve-git-dir: "true"
-      repository: git@github.com:rwx-research/mint-cli.git
-      ref: ${{ init.commit }}
-      ssh-key: ${{ secrets.CHECKOUT_SSH_KEY_MINT_CLI_REPO }}
+      preserve-git-dir: true
+      repository: https://github.com/rwx-research/mint-cli.git
+      ref: ${{ init.commit-sha }}
+      github-access-token: ${{ github.token }}
 
   - key: tool-versions
     use: code
@@ -35,18 +47,18 @@ tasks:
     use: go-deps
     run: |
       CGO_ENABLED=0 \
-      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-${{ init.commit }}" \
+      LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-${{ init.commit-sha }}" \
       go run ./tools/mage test
 
-  - key: build-mint-cli
+  - key: mint-cli
     use: go-deps
     run: |
       CGO_ENABLED=0 \
-        LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-${{ init.commit }}" \
+        LDFLAGS="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=testing-${{ init.commit-sha }}" \
         go run ./tools/mage build
 
   - key: integration-tests
-    use: build-mint-cli
+    use: mint-cli
     run: ./mint run --debug -f test/hello-world.mint.yaml
     env:
       RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
@@ -61,7 +73,7 @@ tasks:
       go mod tidy
       git diff --exit-code
 
-  - key: checkout-mint-testing
+  - key: mint-testing-code
     call: mint/git-clone 1.2.4
     with:
       path: ./mint-testing
@@ -69,16 +81,16 @@ tasks:
       ref: main
       github-access-token: ${{ github.token }}
 
-  - key: install-jq
+  - key: jq
     run: |
       sudo apt-get update
       sudo apt-get install jq
       sudo apt-get clean
 
   - key: run-mint-testing-tests
-    use: [checkout-mint-testing, install-jq, build-mint-cli]
+    use: [mint-testing-code, jq, mint-cli]
     run: |
-      initiate_run_result=$(./mint run --json --file ./mint-testing/.mint/trigger-integration-test.yml --init 'grep=@cli' --init ref=main --init cli=${{ init.commit }})
+      initiate_run_result=$(./mint run --json --file ./mint-testing/.mint/trigger-integration-test.yml --init 'grep=@cli' --init ref=main --init cli=${{ init.commit-sha }})
       echo "${initiate_run_result}"
       run_id=$(echo "${initiate_run_result}" | jq -r ".RunId")
 
