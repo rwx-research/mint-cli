@@ -4,6 +4,7 @@ on:
       if: ${{event.git.branch == 'main' }}
       init:
         commit-sha: ${{ event.git.sha }}
+        ref: ${{ event.git.ref }}
 
 concurrency-pools:
   - id: rwx-research/mint-cli:main
@@ -14,7 +15,8 @@ tasks:
   - key: ci
     call: ${{ run.mint-dir }}/continuous_integration.yml
     init:
-      commit: ${{ init.commit-sha }}
+      commit-sha: ${{ init.commit-sha }}
+      ref: ${{ init.ref }}
 
   - key: release-unstable
     after: [ci]
