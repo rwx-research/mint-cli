@@ -1,12 +1,12 @@
-:globe_with_meridians: [rwx.com/mint](https://www.rwx.com/mint) &ensp;
-:bird: [@rwx_research](https://twitter.com/rwx_research) &ensp;
-:speech_balloon: [discord](https://discord.gg/h4ha5Cue7j) &ensp;
-:books: [documentation](https://www.rwx.com/docs/mint)
+🌐: [rwx.com/mint](https://www.rwx.com/mint) &ensp;
+✖️: [@rwx_research](https://twitter.com/rwx_research) &ensp;
+💬: [discord](https://discord.gg/h4ha5Cue7j) &ensp;
+📚: [documentation](https://www.rwx.com/docs/mint)
 
 Mint is a new language-agnostic build tool designed to
 substantially accelerate engineering feedback loops and lower CI costs.
 
-Mint is currently in closed beta. Learn more at [rwx.com/mint](https://www.rwx.com/mint).
+Learn more and sign up for Mint for free today at [rwx.com/mint](https://www.rwx.com/mint).
 
 ## Getting Started
 
