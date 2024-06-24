@@ -16,11 +16,6 @@ tasks:
     init:
       commit: ${{ init.commit-sha }}
 
-  - key: bigtest
-    call: ${{ run.mint-dir }}/bigtest.yml
-    init:
-      commit-sha: ${{ init.commit-sha }}
-
   - key: release-unstable
     after: [ci, bigtest]
     call: ${{ run.mint-dir }}/release.yml
