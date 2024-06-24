@@ -17,7 +17,7 @@ tasks:
       commit: ${{ init.commit-sha }}
 
   - key: release-unstable
-    after: [ci, bigtest]
+    after: [ci]
     call: ${{ run.mint-dir }}/release.yml
     init:
       kind: unstable
