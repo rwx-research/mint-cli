@@ -22,8 +22,7 @@ tasks:
 
   - key: tool-versions
     use: code
-    run: |
-      grep '^golang ' .tool-versions | awk '{print $2}' | tee $MINT_VALUES/golang
+    call: mint/tool-versions 1.0.0
     filter:
       - .tool-versions
 
