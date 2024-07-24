@@ -13,7 +13,7 @@ concurrency-pools:
 
 tasks:
   - key: code
-    call: mint/git-clone 1.2.4
+    call: mint/git-clone 1.2.5
     with:
       preserve-git-dir: true
       repository: https://github.com/rwx-research/mint-cli.git
@@ -22,8 +22,7 @@ tasks:
 
   - key: tool-versions
     use: code
-    run: |
-      grep '^golang ' .tool-versions | awk '{print $2}' | tee $MINT_VALUES/golang
+    call: mint/tool-versions 1.0.0
     filter:
       - .tool-versions
 
@@ -75,7 +74,7 @@ tasks:
       git diff --exit-code
 
   - key: mint-testing-code
-    call: mint/git-clone 1.2.4
+    call: mint/git-clone 1.2.5
     with:
       path: ./mint-testing
       repository: https://github.com/rwx-research/mint-testing.git
