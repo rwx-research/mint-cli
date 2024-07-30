@@ -22,7 +22,7 @@ tasks:
 
   - key: tool-versions
     use: code
-    call: mint/tool-versions 1.0.0
+    call: mint/tool-versions 1.0.1
     filter:
       - .tool-versions
 
