@@ -2,6 +2,4 @@ package fs
 
 import "io"
 
-type File interface {
-	io.ReadWriteCloser
-}
+type File io.ReadWriteCloser

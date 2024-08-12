@@ -1,11 +1,14 @@
 package cli_test
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"sort"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	"fmt"
 	"strings"
@@ -15,6 +18,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/fs"
+	"github.com/rwx-research/mint-cli/internal/memoryfs"
 	"github.com/rwx-research/mint-cli/internal/mocks"
 
 	"golang.org/x/crypto/ssh"
@@ -1558,6 +1562,160 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 						Expect(stdout.String()).To(ContainSubstring("Updated the following leaves:"))
 						Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.9 → 1.1.1"))
 					})
+				})
+			})
+		})
+	})
+
+	Describe("linting", func() {
+		var truncatedDiff bool
+		var lintConfig cli.LintConfig
+		var stdout bytes.Buffer
+		var memfs *memoryfs.MemoryFS
+
+		BeforeEach(func() {
+			truncatedDiff = format.TruncatedDiff
+			format.TruncatedDiff = false
+
+			memfs = memoryfs.NewFS()
+			Expect(memfs.MkdirAll("/some/path/to")).NotTo(HaveOccurred())
+			Expect(memfs.Chdir("/some/path/to")).NotTo(HaveOccurred())
+			config.FileSystem = memfs
+
+			stdout.Reset()
+			lintConfig = cli.LintConfig{Output: io.Writer(&stdout), OutputFormat: cli.LintOutputNone}
+		})
+
+		AfterEach(func() {
+			format.TruncatedDiff = truncatedDiff
+		})
+
+		Context("with multiple errors", func() {
+			BeforeEach(func() {
+				Expect(memfs.WriteFileString("mint1.yml", "mint1 contents")).NotTo(HaveOccurred())
+				Expect(memfs.WriteFileString(".mint/base.yml", ".mint/base.yml contents")).NotTo(HaveOccurred())
+				Expect(memfs.WriteFileString(".mint/base.json", ".mint/base.json contents")).NotTo(HaveOccurred())
+
+				lintConfig.MintFilePaths = []string{"mint1.yml", ".mint/base.yml"}
+
+				mockAPI.MockLint = func(cfg api.LintConfig) (*api.LintResult, error) {
+					Expect(cfg.TaskDefinitions).To(HaveLen(2))
+					return &api.LintResult{
+						Problems: []api.LintProblem{
+							{Severity: "error", Message: "message 1\nmessage 1a", FileName: "mint1.yml", Line: api.NewNullInt(11), Column: api.NewNullInt(22), Advice: "advice 1\nadvice 1a"},
+							{Severity: "error", Message: "message 2\nmessage 2a", FileName: "mint1.yml", Line: api.NewNullInt(15), Column: api.NewNullInt(4)},
+							{Severity: "warning", Message: "message 3", FileName: "mint1.yml", Line: api.NewNullInt(2), Column: api.NewNullInt(6), Advice: "advice 3\nadvice 3a"},
+							{Severity: "warning", Message: "message 4", FileName: "mint1.yml", Line: api.NullInt{IsNull: true}, Column: api.NullInt{IsNull: true}},
+						},
+					}, nil
+				}
+			})
+
+			Context("using oneline output", func() {
+				BeforeEach(func() {
+					lintConfig.OutputFormat = cli.LintOutputOneLine
+				})
+
+				It("orders and lists only files", func() {
+					_, err := service.Lint(lintConfig)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(Equal(`warning mint1.yml - message 4
+warning mint1.yml:2:6 - message 3 advice 3 advice 3a
+error   mint1.yml:11:22 - message 1 message 1a advice 1 advice 1a
+error   mint1.yml:15:4 - message 2 message 2a
+`))
+				})
+			})
+
+			Context("using multiline output", func() {
+				BeforeEach(func() {
+					lintConfig.OutputFormat = cli.LintOutputMultiLine
+				})
+
+				It("orders and lists only files", func() {
+					_, err := service.Lint(lintConfig)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(Equal(`mint1.yml  [warning]
+message 4
+
+mint1.yml:2:6  [warning]
+message 3
+advice 3
+advice 3a
+
+mint1.yml:11:22  [error]
+message 1
+message 1a
+advice 1
+advice 1a
+
+mint1.yml:15:4  [error]
+message 2
+message 2a
+`))
+				})
+			})
+
+			Context("using none output", func() {
+				BeforeEach(func() {
+					lintConfig.OutputFormat = cli.LintOutputNone
+				})
+
+				It("doesn't output", func() {
+					_, err := service.Lint(lintConfig)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(Equal(""))
+				})
+			})
+		})
+
+		Context("with no errors", func() {
+			BeforeEach(func() {
+				Expect(memfs.WriteFileString("mint1.yml", "mint1 contents")).NotTo(HaveOccurred())
+				Expect(memfs.WriteFileString(".mint/base.yml", ".mint/base.yml contents")).NotTo(HaveOccurred())
+				Expect(memfs.WriteFileString(".mint/base.json", ".mint/base.json contents")).NotTo(HaveOccurred())
+
+				lintConfig.MintFilePaths = []string{"mint1.yml", ".mint/base.yml"}
+
+				mockAPI.MockLint = func(cfg api.LintConfig) (*api.LintResult, error) {
+					Expect(cfg.TaskDefinitions).To(HaveLen(2))
+					return &api.LintResult{}, nil
+				}
+			})
+
+			Context("using oneline output", func() {
+				BeforeEach(func() {
+					lintConfig.OutputFormat = cli.LintOutputOneLine
+				})
+
+				It("doesn't output", func() {
+					_, err := service.Lint(lintConfig)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(Equal(""))
+				})
+			})
+
+			Context("using multiline output", func() {
+				BeforeEach(func() {
+					lintConfig.OutputFormat = cli.LintOutputMultiLine
+				})
+
+				It("doesn't output", func() {
+					_, err := service.Lint(lintConfig)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(Equal(""))
+				})
+			})
+
+			Context("using none output", func() {
+				BeforeEach(func() {
+					lintConfig.OutputFormat = cli.LintOutputNone
+				})
+
+				It("doesn't output", func() {
+					_, err := service.Lint(lintConfig)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(stdout.String()).To(Equal(""))
 				})
 			})
 		})

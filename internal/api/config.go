@@ -1,6 +1,10 @@
 package api
 
 import (
+	"bytes"
+	"fmt"
+	"io"
+
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/errors"
 )
@@ -46,6 +50,56 @@ func (c InitiateRunConfig) Validate() error {
 	}
 
 	return nil
+}
+
+type LintConfig struct {
+	TaskDefinitions []TaskDefinition `json:"task_definitions"`
+	TargetPaths     []string         `json:"target_paths"`
+}
+
+func (c LintConfig) Validate() error {
+	if len(c.TaskDefinitions) == 0 {
+		return errors.New("no task definitions")
+	}
+
+	if len(c.TargetPaths) == 0 {
+		return errors.New("no target paths")
+	}
+
+	return nil
+}
+
+type LintProblem struct {
+	Severity string  `json:"severity"`
+	Message  string  `json:"message"`
+	FileName string  `json:"file_name"`
+	Line     NullInt `json:"line"`
+	Column   NullInt `json:"column"`
+	Advice   string  `json:"advice"`
+}
+
+func (lf LintProblem) FileLocation() string {
+	if len(lf.FileName) > 0 {
+		var buf bytes.Buffer
+		w := io.Writer(&buf)
+
+		fmt.Fprint(w, lf.FileName)
+
+		if !lf.Line.IsNull {
+			fmt.Fprintf(w, ":%d", lf.Line.Value)
+		}
+		if !lf.Column.IsNull {
+			fmt.Fprintf(w, ":%d", lf.Column.Value)
+		}
+
+		return buf.String()
+	}
+
+	return ""
+}
+
+type LintResult struct {
+	Problems []LintProblem `json:"problems"`
 }
 
 type ObtainAuthCodeConfig struct {

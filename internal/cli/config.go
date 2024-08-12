@@ -61,6 +61,47 @@ func (c InitiateRunConfig) Validate() error {
 	return nil
 }
 
+type LintOutputFormat int
+
+const (
+	LintOutputNone LintOutputFormat = iota
+	LintOutputOneLine
+	LintOutputMultiLine
+)
+
+type LintConfig struct {
+	MintDirectory string
+	MintFilePaths []string
+	Output        io.Writer
+	OutputFormat  LintOutputFormat
+}
+
+func (c LintConfig) Validate() error {
+	return nil
+}
+
+func NewLintConfig(filePaths []string, mintDir string, output io.Writer, formatString string) (LintConfig, error) {
+	var format LintOutputFormat
+
+	switch formatString {
+	case "none":
+		format = LintOutputNone
+	case "oneline":
+		format = LintOutputOneLine
+	case "multiline":
+		format = LintOutputMultiLine
+	default:
+		return LintConfig{}, errors.New("unknown output format, expected one of: none, oneline, multiline")
+	}
+
+	return LintConfig{
+		MintDirectory: mintDir,
+		MintFilePaths: filePaths,
+		Output:        output,
+		OutputFormat:  format,
+	}, nil
+}
+
 type LoginConfig struct {
 	DeviceName         string
 	AccessTokenBackend accesstoken.Backend

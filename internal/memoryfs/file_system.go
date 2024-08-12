@@ -191,23 +191,37 @@ func (mfs *MemoryFS) Entries() map[string]*MemFile {
 	return maps.Clone(mfs.entries)
 }
 
+// WriteFile creates a file at the given path, including any necessary directory structure.
+func (mfs *MemoryFS) WriteFile(name string, contents []byte) error {
+	name = mfs.abs(name)
+	dir := path.Dir(name)
+	if err := mfs.MkdirAll(dir); err != nil {
+		return err
+	}
+
+	file, err := mfs.Create(name)
+	if err != nil {
+		return err
+	}
+	if _, err = file.Write(contents); err != nil {
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// WriteFileString creates a file at the given path, including any necessary directory structure.
+func (mfs *MemoryFS) WriteFileString(name string, contents string) error {
+	return mfs.WriteFile(name, []byte(contents))
+}
+
 // WriteFiles creates the given files, including any necessary directory structure.
 func (mfs *MemoryFS) WriteFiles(files map[string][]byte) error {
 	for name, contents := range files {
-		name = mfs.abs(name)
-		dir := path.Dir(name)
-		if err := mfs.MkdirAll(dir); err != nil {
-			return err
-		}
-
-		file, err := mfs.Create(name)
-		if err != nil {
-			return err
-		}
-		if _, err = file.Write(contents); err != nil {
-			return err
-		}
-		if err = file.Close(); err != nil {
+		if err := mfs.WriteFile(name, contents); err != nil {
 			return err
 		}
 	}
