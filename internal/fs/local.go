@@ -50,7 +50,15 @@ func (l Local) Getwd() (string, error) {
 
 func (l Local) Exists(name string) (bool, error) {
 	_, err := os.Stat(name)
-	if err == nil { return true, nil }
-	if os.IsNotExist(err) { return false, nil }
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
 	return false, err
+}
+
+func (l Local) Stat(name string) (DirEntry, error) {
+	return os.Stat(name)
 }
