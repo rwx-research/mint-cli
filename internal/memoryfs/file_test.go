@@ -25,9 +25,9 @@ var _ = Describe("MemFile", func() {
 		err = omf.Close()
 		Expect(err).To(BeNil())
 
-		data := mf.Bytes()
-		Expect(len(data)).To(Equal(13312))
-		Expect(data[0:26]).To(Equal([]byte("Hello World!\nHello World!\n")))
+		contents := mf.Bytes()
+		Expect(len(contents)).To(Equal(13312))
+		Expect(contents[0:26]).To(Equal([]byte("Hello World!\nHello World!\n")))
 
 		// Can read, overwrite, and truncate
 		omf, err = mf.Open()
@@ -41,8 +41,8 @@ var _ = Describe("MemFile", func() {
 
 		err = omf.Close()
 		Expect(err).To(BeNil())
-		data = mf.Bytes()
-		Expect(len(data)).To(Equal(10))
-		Expect(data).To(Equal([]byte("Hello Bob!")))
+		contents = mf.Bytes()
+		Expect(len(contents)).To(Equal(10))
+		Expect(contents).To(Equal([]byte("Hello Bob!")))
 	})
 })

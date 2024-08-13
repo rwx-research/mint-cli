@@ -15,7 +15,7 @@ import (
 
 const Separator = "/"
 
-var _ fs.FileSystem = new(MemoryFS)
+var _ fs.FileSystem = (*MemoryFS)(nil)
 
 var (
 	ErrExist    = iofs.ErrExist
@@ -63,7 +63,7 @@ func (mfs *MemoryFS) Open(name string) (fs.File, error) {
 func (mfs *MemoryFS) open(name string) (fs.File, error) {
 	file := mfs.lookup(name)
 	if file == nil {
-		return nil, ErrNotExist
+		return nil, &iofs.PathError{Op: "open", Path: name, Err: ErrNotExist}
 	}
 	if file.IsDir() {
 		return nil, fmt.Errorf("path %q is a directory", name)
@@ -109,12 +109,10 @@ func (mfs *MemoryFS) MkdirAll(path string) error {
 	defer mfs.mu.Unlock()
 
 	parts := strings.Split(fullPath, Separator)
-	// fmt.Printf("MkdirAll fullPath = %q, parts = %v\n", fullPath, parts)
 
 	for i := 0; i < len(parts); i++ {
 		dir := strings.Join(parts[:i+1], Separator)
 		info := mfs.lookup(dir)
-		// fmt.Printf("MkdirAll dir = %q, info = %+v\n", dir, info)
 		if info != nil {
 			if info.IsDir() {
 				continue

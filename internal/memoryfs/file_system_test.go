@@ -207,7 +207,7 @@ var _ = Describe("MemoryFS", func() {
 			Expect(info.Name()).To(Equal("file.txt"))
 			Expect(info.IsDir()).To(BeFalse())
 
-			info, err = mfs.Stat("/path/to/")
+			info, err = mfs.Stat("/path/to")
 			Expect(err).To(BeNil())
 			Expect(info.Name()).To(Equal("to"))
 			Expect(info.IsDir()).To(BeTrue())

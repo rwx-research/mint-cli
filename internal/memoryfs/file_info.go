@@ -20,7 +20,7 @@ func (fi *memFileInfo) Name() string {
 }
 
 func (fi *memFileInfo) Size() int64 {
-	return int64(len(fi.mf.data))
+	return int64(len(fi.mf.contents))
 }
 
 func (fi *memFileInfo) Mode() iofs.FileMode {
