@@ -315,12 +315,7 @@ func outputLintOneLine(w io.Writer, lintedFiles []api.LintProblem) error {
 			fmt.Fprint(w, fileLoc, " - ")
 		}
 
-		fmt.Fprint(w, strings.ReplaceAll(lf.Message, "\n", " "))
-
-		if len(lf.Advice) > 0 {
-			fmt.Fprintf(w, " %s", strings.ReplaceAll(lf.Advice, "\n", " "))
-		}
-
+		fmt.Fprint(w, strings.TrimSuffix(strings.ReplaceAll(lf.Message, "\n", " "), " "))
 		fmt.Fprintln(w)
 	}
 

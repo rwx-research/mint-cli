@@ -1620,8 +1620,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(stdout.String()).To(Equal(`warning mint1.yml - message 4
-warning mint1.yml:2:6 - message 3 advice 3 advice 3a
-error   mint1.yml:11:22 - message 1 message 1a advice 1 advice 1a
+warning mint1.yml:2:6 - message 3
+error   mint1.yml:11:22 - message 1 message 1a
 error   mint1.yml:15:4 - message 2 message 2a
 `))
 				})
