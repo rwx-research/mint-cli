@@ -7,4 +7,5 @@ type FileSystem interface {
 	MkdirAll(path string) error
 	Getwd() (string, error)
 	Exists(name string) (bool, error)
+	Stat(name string) (DirEntry, error)
 }
