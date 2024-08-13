@@ -13,6 +13,7 @@ type API struct {
 	MockWhoami                 func() (*api.WhoamiResult, error)
 	MockSetSecretsInVault      func(api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error)
 	MockGetLeafVersions        func() (*api.LeafVersionsResult, error)
+	MockLint                   func(api.LintConfig) (*api.LintResult, error)
 }
 
 func (c *API) InitiateRun(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
@@ -69,4 +70,12 @@ func (c *API) GetLeafVersions() (*api.LeafVersionsResult, error) {
 	}
 
 	return nil, errors.New("MockGetLeafVersions was not configured")
+}
+
+func (c *API) Lint(cfg api.LintConfig) (*api.LintResult, error) {
+	if c.MockLint != nil {
+		return c.MockLint(cfg)
+	}
+
+	return nil, errors.New("MockLint was not configured")
 }

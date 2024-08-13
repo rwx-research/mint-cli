@@ -11,6 +11,7 @@ type APIClient interface {
 	InitiateRun(api.InitiateRunConfig) (*api.InitiateRunResult, error)
 	ObtainAuthCode(api.ObtainAuthCodeConfig) (*api.ObtainAuthCodeResult, error)
 	AcquireToken(tokenUrl string) (*api.AcquireTokenResult, error)
+	Lint(api.LintConfig) (*api.LintResult, error)
 	Whoami() (*api.WhoamiResult, error)
 	SetSecretsInVault(api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error)
 	GetLeafVersions() (*api.LeafVersionsResult, error)

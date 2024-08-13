@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -172,6 +174,168 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	}
 
 	return runResult, nil
+}
+
+func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
+	err := cfg.Validate()
+	if err != nil {
+		return nil, errors.Wrap(err, "validation failed")
+	}
+
+	configFilePaths := cfg.MintFilePaths
+
+	// Ensure both the provided paths and everything in the MintDirectory is loaded.
+	mintDirectoryPath, err := s.findMintDirectoryPath(cfg.MintDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("You specified a mint directory of %q, but %q could not be found", cfg.MintDirectory, cfg.MintDirectory)
+	}
+	configFilePaths = append(configFilePaths, mintDirectoryPath)
+	configFilePaths = removeDuplicateStrings(configFilePaths)
+
+	taskDefinitionYamlPaths := make([]string, 0)
+
+	for _, fileOrDir := range configFilePaths {
+		fi, err := s.Config.FileSystem.Stat(fileOrDir)
+		if err != nil {
+			if errors.Is(err, errors.ErrFileNotExists) {
+				return nil, fmt.Errorf("you specified %q, but %q could not be found", fileOrDir, fileOrDir)
+			}
+			return nil, errors.Wrap(err, "unable to find file or directory")
+		}
+
+		if fi.IsDir() {
+			paths, err := s.yamlFilePathsInDirectory(fileOrDir)
+			if err != nil {
+				return nil, errors.Wrap(err, "unable to find yaml files in directory")
+			}
+			taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, paths...)
+		} else {
+			taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, fileOrDir)
+		}
+	}
+
+	wd, err := s.Config.FileSystem.Getwd()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to get current working directory")
+	}
+
+	// Normalize paths to be relative to current working directory.
+	relativeTaskDefinitionYamlPaths := make([]string, len(taskDefinitionYamlPaths))
+	for i, yamlPath := range taskDefinitionYamlPaths {
+		if relativePath, err := filepath.Rel(wd, yamlPath); err == nil {
+			relativeTaskDefinitionYamlPaths[i] = relativePath
+		} else {
+			relativeTaskDefinitionYamlPaths[i] = yamlPath
+		}
+	}
+	relativeTaskDefinitionYamlPaths = removeDuplicateStrings(relativeTaskDefinitionYamlPaths)
+
+	taskDefinitions, err := s.taskDefinitionsFromPaths(relativeTaskDefinitionYamlPaths)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to read provided files")
+	}
+	taskDefinitions = removeDuplicates(taskDefinitions, func(td api.TaskDefinition) string {
+		return td.Path
+	})
+
+	var targetPaths []string
+	if len(cfg.MintFilePaths) > 0 {
+		targetPaths = make([]string, len(cfg.MintFilePaths))
+
+		for i, yamlPath := range cfg.MintFilePaths {
+			if relativePath, err := filepath.Rel(wd, yamlPath); err == nil {
+				targetPaths[i] = relativePath
+			} else {
+				targetPaths[i] = yamlPath
+			}
+		}
+		targetPaths = removeDuplicateStrings(targetPaths)
+	} else {
+		targetPaths = relativeTaskDefinitionYamlPaths
+	}
+
+	lintResult, err := s.APIClient.Lint(api.LintConfig{
+		TaskDefinitions: taskDefinitions,
+		TargetPaths:     targetPaths,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to lint files")
+	}
+
+	switch cfg.OutputFormat {
+	case LintOutputOneLine:
+		err = outputLintOneLine(cfg.Output, sortLintProblems(lintResult.Problems))
+	case LintOutputMultiLine:
+		err = outputLintMultiLine(cfg.Output, sortLintProblems(lintResult.Problems))
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to output lint results")
+	}
+
+	return lintResult, nil
+}
+
+func outputLintMultiLine(w io.Writer, lintedFiles []api.LintProblem) error {
+	if len(lintedFiles) == 0 {
+		return nil
+	}
+
+	for i, lf := range lintedFiles {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+
+		if fileLoc := lf.FileLocation(); len(fileLoc) > 0 {
+			fmt.Fprint(w, fileLoc, "  ")
+		}
+		fmt.Fprint(w, "[", lf.Severity, "]")
+		fmt.Fprintln(w)
+
+		fmt.Fprint(w, lf.Message)
+
+		if len(lf.Advice) > 0 {
+			fmt.Fprint(w, "\n", lf.Advice)
+		}
+
+		fmt.Fprintln(w)
+	}
+
+	return nil
+}
+
+func outputLintOneLine(w io.Writer, lintedFiles []api.LintProblem) error {
+	if len(lintedFiles) == 0 {
+		return nil
+	}
+
+	for _, lf := range lintedFiles {
+		fmt.Fprintf(w, "%-8s", lf.Severity)
+
+		if fileLoc := lf.FileLocation(); len(fileLoc) > 0 {
+			fmt.Fprint(w, fileLoc, " - ")
+		}
+
+		fmt.Fprint(w, strings.TrimSuffix(strings.ReplaceAll(lf.Message, "\n", " "), " "))
+		fmt.Fprintln(w)
+	}
+
+	return nil
+}
+
+func sortLintProblems(problems []api.LintProblem) []api.LintProblem {
+	sortedProblems := append([]api.LintProblem(nil), problems...)
+	slices.SortFunc(sortedProblems, func(a, b api.LintProblem) int {
+		if n := cmp.Compare(a.FileName, b.FileName); n != 0 {
+			return n
+		}
+
+		if n := cmp.Compare(a.Line.Value, b.Line.Value); n != 0 {
+			return n
+		}
+
+		return cmp.Compare(a.Column.Value, b.Column.Value)
+	})
+	return sortedProblems
 }
 
 // InitiateRun will connect to the Cloud API and start a new run in Mint.
@@ -582,4 +746,23 @@ func PickLatestMinorVersion(versions api.LeafVersionsResult, leaf string, major 
 	}
 
 	return latestVersion, nil
+}
+
+func removeDuplicateStrings(list []string) []string {
+	slices.Sort(list)
+	return slices.Compact(list)
+}
+
+func removeDuplicates[T any, K comparable](list []T, identity func(t T) K) []T {
+	seen := make(map[K]bool)
+	var ts []T
+
+	for _, t := range list {
+		id := identity(t)
+		if _, found := seen[id]; !found {
+			seen[id] = true
+			ts = append(ts, t)
+		}
+	}
+	return ts
 }
