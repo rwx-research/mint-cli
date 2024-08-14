@@ -18,10 +18,16 @@ tasks:
         echo "${{ init.version }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || (echo "Version number is not formatted as vX.X.X" && false)
       fi
 
+  - key: tool-versions
+    use: code
+    call: mint/tool-versions 1.0.1
+    filter:
+      - .tool-versions
+
   - key: go
     call: mint/install-go 1.0.6
     with:
-      go-version: 1.22.1
+      go-version: ${{ tasks.tool-versions.values.golang }}
 
   - key: extract-version-details
     after: verify-inputs
