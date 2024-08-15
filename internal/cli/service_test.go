@@ -1652,6 +1652,8 @@ advice 1a
 mint1.yml:15:4  [error]
 message 2
 message 2a
+
+Checked 2 files and found 4 problems.
 `))
 				})
 			})
@@ -1700,10 +1702,10 @@ message 2a
 					lintConfig.OutputFormat = cli.LintOutputMultiLine
 				})
 
-				It("doesn't output", func() {
+				It("outputs check counts", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(""))
+					Expect(stdout.String()).To(Equal("\nChecked 2 files and found 0 problems.\n"))
 				})
 			})
 
