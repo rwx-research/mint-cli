@@ -266,7 +266,7 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 	case LintOutputOneLine:
 		err = outputLintOneLine(cfg.Output, sortLintProblems(lintResult.Problems))
 	case LintOutputMultiLine:
-		err = outputLintMultiLine(cfg.Output, sortLintProblems(lintResult.Problems))
+		err = outputLintMultiLine(cfg.Output, sortLintProblems(lintResult.Problems), len(targetPaths))
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to output lint results")
@@ -275,12 +275,8 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 	return lintResult, nil
 }
 
-func outputLintMultiLine(w io.Writer, lintedFiles []api.LintProblem) error {
-	if len(lintedFiles) == 0 {
-		return nil
-	}
-
-	for i, lf := range lintedFiles {
+func outputLintMultiLine(w io.Writer, problems []api.LintProblem, fileCount int) error {
+	for i, lf := range problems {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
@@ -299,6 +295,13 @@ func outputLintMultiLine(w io.Writer, lintedFiles []api.LintProblem) error {
 
 		fmt.Fprintln(w)
 	}
+
+	pluralized := "problems"
+	if len(problems) == 1 {
+		pluralized = "problem"
+	}
+
+	fmt.Fprintf(w, "\nChecked %d files and found %d %s.\n", fileCount, len(problems), pluralized)
 
 	return nil
 }
