@@ -19,7 +19,6 @@ import (
 
 	"github.com/briandowns/spinner"
 	"golang.org/x/crypto/ssh"
-	"gopkg.in/yaml.v3"
 )
 
 // Service holds the main business logic of the CLI.
@@ -127,18 +126,6 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	taskDefinitions, err := s.taskDefinitionsFromPaths([]string{taskDefinitionYamlPath})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
-	}
-
-	for _, taskDefinition := range mintDirectory {
-		if err := validateYAML(taskDefinition.FileContents); err != nil {
-			return nil, errors.Wrapf(err, "unable to parse %q", taskDefinition.Path)
-		}
-	}
-
-	for _, taskDefinition := range taskDefinitions {
-		if err := validateYAML(taskDefinition.FileContents); err != nil {
-			return nil, errors.Wrapf(err, "unable to parse %q", taskDefinition.Path)
-		}
 	}
 
 	// mintDirectory task definitions must have their paths relative to the .mint directory
@@ -716,16 +703,6 @@ func (s Service) findMintDirectoryPath(configuredDirectory string) (string, erro
 		parentDir, _ := filepath.Split(workingDirectory)
 		workingDirectory = filepath.Clean(parentDir)
 	}
-}
-
-// validateYAML checks whether a string can be parsed as YAML
-func validateYAML(body string) error {
-	contentMap := make(map[string]any)
-	if err := yaml.Unmarshal([]byte(body), &contentMap); err != nil {
-		return errors.WithStack(err)
-	}
-
-	return nil
 }
 
 func PickLatestMajorVersion(versions api.LeafVersionsResult, leaf string, _ string) (string, error) {
