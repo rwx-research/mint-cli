@@ -1557,5 +1557,43 @@ Checked 2 files and found 4 problems.
 				})
 			})
 		})
+
+
+		Context("with snippets", func() {
+			BeforeEach(func() {
+				Expect(memfs.WriteFileString(".mint/base1.yml", ".mint/base1.yml contents")).NotTo(HaveOccurred())
+				Expect(memfs.WriteFileString(".mint/base2.yml", ".mint/base2.yml contents")).NotTo(HaveOccurred())
+				Expect(memfs.WriteFileString(".mint/_snippet1.yml", ".mint/_snippet1.yml contents")).NotTo(HaveOccurred())
+				Expect(memfs.WriteFileString(".mint/_snippet2.yml", ".mint/_snippet2.yml contents")).NotTo(HaveOccurred())
+
+				lintConfig.OutputFormat = cli.LintOutputOneLine
+			})
+
+			Context("without targeting", func () {
+				It("doesn't target the snippets", func() {
+					mockAPI.MockLint = func(cfg api.LintConfig) (*api.LintResult, error) {
+						runDefinitionPaths := make([]string, len(cfg.TaskDefinitions))
+						for i, runDefinitionPath := range cfg.TaskDefinitions {
+							runDefinitionPaths[i] = runDefinitionPath.Path
+						}
+						Expect(runDefinitionPaths).To(ConsistOf([]string{".mint/base1.yml", ".mint/base2.yml", ".mint/_snippet1.yml", ".mint/_snippet2.yml"}))
+						Expect(cfg.TargetPaths).To(ConsistOf([]string{".mint/base1.yml", ".mint/base2.yml"}))
+						return &api.LintResult{}, nil
+					}
+
+					_, err := service.Lint(lintConfig)
+					Expect(err).NotTo(HaveOccurred())
+				})
+			})
+
+			Context("with targeting", func () {
+				It("doesn't allow you target the snippets", func() {
+					lintConfig.MintFilePaths = []string{".mint/_snippet1.yml", ".mint/_snippet2.yml"}
+
+					_, err := service.Lint(lintConfig)
+					Expect(err).To(MatchError("You cannot target snippets for linting, but you targeted the following snippets: .mint/_snippet1.yml, .mint/_snippet2.yml\n\nTo lint snippets, include them from a Mint run definition and lint the run definition."))
+				})
+			})
+		})
 	})
 })
