@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -237,8 +238,14 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 			}
 		}
 		targetPaths = removeDuplicateStrings(targetPaths)
+		_, snippetFileNames := findSnippets(targetPaths)
+		if len(snippetFileNames) > 0 {
+			return nil, fmt.Errorf("You cannot target snippets for linting, but you targeted the following snippets: %s\n\nTo lint snippets, include them from a Mint run definition and lint the run definition.", strings.Join(snippetFileNames, ", "))
+		}
 	} else {
 		targetPaths = relativeTaskDefinitionYamlPaths
+		nonSnippetFileNames, _ := findSnippets(targetPaths)
+		targetPaths = nonSnippetFileNames
 	}
 
 	lintResult, err := s.APIClient.Lint(api.LintConfig{
@@ -731,6 +738,17 @@ func PickLatestMinorVersion(versions api.LeafVersionsResult, leaf string, major 
 func removeDuplicateStrings(list []string) []string {
 	slices.Sort(list)
 	return slices.Compact(list)
+}
+
+func findSnippets(fileNames []string) (nonSnippetFileNames []string, snippetFileNames []string) {
+	for _, fileName := range fileNames {
+			if strings.HasPrefix(path.Base(fileName), "_") {
+				snippetFileNames = append(snippetFileNames, fileName)
+			} else {
+				nonSnippetFileNames = append(nonSnippetFileNames, fileName)
+			}
+	}
+	return nonSnippetFileNames, snippetFileNames
 }
 
 func removeDuplicates[T any, K comparable](list []T, identity func(t T) K) []T {
