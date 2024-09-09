@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +16,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/dotenv"
 	"github.com/rwx-research/mint-cli/internal/errors"
+	"github.com/rwx-research/mint-cli/internal/messages"
 
 	"github.com/briandowns/spinner"
 	"golang.org/x/crypto/ssh"
@@ -158,7 +158,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		UseCache:                 !cfg.NoCache,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to initiate run")
+		return nil, errors.Wrap(err, "Failed to initiated run")
 	}
 
 	return runResult, nil
@@ -258,9 +258,9 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 
 	switch cfg.OutputFormat {
 	case LintOutputOneLine:
-		err = outputLintOneLine(cfg.Output, sortLintProblems(lintResult.Problems))
+		err = outputLintOneLine(cfg.Output, lintResult.Problems)
 	case LintOutputMultiLine:
-		err = outputLintMultiLine(cfg.Output, sortLintProblems(lintResult.Problems), len(targetPaths))
+		err = outputLintMultiLine(cfg.Output, lintResult.Problems, len(targetPaths))
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to output lint results")
@@ -270,32 +270,40 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 }
 
 func outputLintMultiLine(w io.Writer, problems []api.LintProblem, fileCount int) error {
-	for i, lf := range problems {
-		if i > 0 {
+	for _, lf := range problems {
+		fmt.Fprintln(w)
+
+		if len(lf.StackTrace) > 0 {
+			fmt.Fprint(w, "[", lf.Severity, "] ")
+			fmt.Fprintln(w, messages.FormatUserMessage(lf.Message, lf.Frame, lf.StackTrace, lf.Advice))
+		} else {
+			if fileLoc := lf.FileLocation(); len(fileLoc) > 0 {
+				fmt.Fprint(w, fileLoc, "  ")
+			}
+			fmt.Fprint(w, "[", lf.Severity, "]")
+			fmt.Fprintln(w)
+
+			fmt.Fprint(w, lf.Message)
+
+			if len(lf.Advice) > 0 {
+				fmt.Fprint(w, "\n", lf.Advice)
+			}
+
 			fmt.Fprintln(w)
 		}
-
-		if fileLoc := lf.FileLocation(); len(fileLoc) > 0 {
-			fmt.Fprint(w, fileLoc, "  ")
-		}
-		fmt.Fprint(w, "[", lf.Severity, "]")
-		fmt.Fprintln(w)
-
-		fmt.Fprint(w, lf.Message)
-
-		if len(lf.Advice) > 0 {
-			fmt.Fprint(w, "\n", lf.Advice)
-		}
-
-		fmt.Fprintln(w)
 	}
 
-	pluralized := "problems"
+	pluralizedProblems := "problems"
 	if len(problems) == 1 {
-		pluralized = "problem"
+		pluralizedProblems = "problem"
 	}
 
-	fmt.Fprintf(w, "\nChecked %d files and found %d %s.\n", fileCount, len(problems), pluralized)
+	pluralizedFiles := "files"
+	if fileCount == 1 {
+		pluralizedFiles = "file"
+	}
+
+	fmt.Fprintf(w, "\nChecked %d %s and found %d %s.\n", fileCount, pluralizedFiles, len(problems), pluralizedProblems)
 
 	return nil
 }
@@ -317,22 +325,6 @@ func outputLintOneLine(w io.Writer, lintedFiles []api.LintProblem) error {
 	}
 
 	return nil
-}
-
-func sortLintProblems(problems []api.LintProblem) []api.LintProblem {
-	sortedProblems := append([]api.LintProblem(nil), problems...)
-	slices.SortFunc(sortedProblems, func(a, b api.LintProblem) int {
-		if n := cmp.Compare(a.FileName, b.FileName); n != 0 {
-			return n
-		}
-
-		if n := cmp.Compare(a.Line.Value, b.Line.Value); n != 0 {
-			return n
-		}
-
-		return cmp.Compare(a.Column.Value, b.Column.Value)
-	})
-	return sortedProblems
 }
 
 // InitiateRun will connect to the Cloud API and start a new run in Mint.
