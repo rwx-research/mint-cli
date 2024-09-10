@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/rwx-research/mint-cli/cmd/mint/config"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/errors"
+	"github.com/rwx-research/mint-cli/internal/messages"
 )
 
 // Client is an API Client for Mint
@@ -367,15 +369,39 @@ func (c Client) GetLeafVersions() (*LeafVersionsResult, error) {
 	return &respBody, nil
 }
 
+type ErrorMessage struct {
+	Message    string       				 `json:"message"`
+	StackTrace []messages.StackEntry `json:"stack_trace,omitempty"`
+	Frame      string       			 	 `json:"frame"`
+	Advice     string       				 `json:"advice"`
+}
+
 // extractErrorMessage is a small helper function for parsing an API error message
 func extractErrorMessage(reader io.Reader) string {
 	errorStruct := struct {
-		Error string
+		Error 				string 				 `json:"error,omitempty"`
+		ErrorMessages []ErrorMessage `json:"error_messages,omitempty"`
 	}{}
 
 	if err := json.NewDecoder(reader).Decode(&errorStruct); err != nil {
 		return ""
 	}
 
-	return errorStruct.Error
+	if len(errorStruct.ErrorMessages) > 0 {
+		var message strings.Builder
+		for _, errorMessage := range errorStruct.ErrorMessages {
+			message.WriteString("\n\n")
+			message.WriteString(messages.FormatUserMessage(errorMessage.Message, errorMessage.Frame, errorMessage.StackTrace, errorMessage.Advice))
+		}
+
+		return message.String()
+	}
+
+	// Fallback to Error field
+	if errorStruct.Error != "" {
+		return errorStruct.Error
+	}
+
+	// Fallback to an empty string
+	return ""
 }

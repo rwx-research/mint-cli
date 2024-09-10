@@ -7,6 +7,7 @@ import (
 
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/errors"
+	"github.com/rwx-research/mint-cli/internal/messages"
 )
 
 type Config struct {
@@ -70,26 +71,45 @@ func (c LintConfig) Validate() error {
 }
 
 type LintProblem struct {
-	Severity string  `json:"severity"`
-	Message  string  `json:"message"`
-	FileName string  `json:"file_name"`
-	Line     NullInt `json:"line"`
-	Column   NullInt `json:"column"`
-	Advice   string  `json:"advice"`
+	Severity   string                `json:"severity"`
+	Message    string                `json:"message"`
+	FileName   string                `json:"file_name"`
+	Line       NullInt               `json:"line"`
+	Column     NullInt               `json:"column"`
+	Advice     string                `json:"advice"`
+	StackTrace []messages.StackEntry `json:"stack_trace,omitempty"`
+	Frame      string                `json:"frame"`
 }
 
 func (lf LintProblem) FileLocation() string {
-	if len(lf.FileName) > 0 {
+	fileName := lf.FileName
+	line := lf.Line
+	column := lf.Column
+
+	if (len(lf.StackTrace) > 0) {
+		lastStackEntry := lf.StackTrace[len(lf.StackTrace) - 1]
+		fileName = lastStackEntry.FileName
+		line = NullInt{
+			Value:  lastStackEntry.Line,
+			IsNull: false,
+		}
+		column = NullInt{
+			Value:  lastStackEntry.Column,
+			IsNull: false,
+		}
+	}
+
+	if len(fileName) > 0 {
 		var buf bytes.Buffer
 		w := io.Writer(&buf)
 
-		fmt.Fprint(w, lf.FileName)
+		fmt.Fprint(w, fileName)
 
-		if !lf.Line.IsNull {
-			fmt.Fprintf(w, ":%d", lf.Line.Value)
+		if !line.IsNull {
+			fmt.Fprintf(w, ":%d", line.Value)
 		}
-		if !lf.Column.IsNull {
-			fmt.Fprintf(w, ":%d", lf.Column.Value)
+		if !column.IsNull {
+			fmt.Fprintf(w, ":%d", column.Value)
 		}
 
 		return buf.String()
