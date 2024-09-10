@@ -158,7 +158,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		UseCache:                 !cfg.NoCache,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to initiated run")
+		return nil, errors.Wrap(err, "Failed to initiate run")
 	}
 
 	return runResult, nil
