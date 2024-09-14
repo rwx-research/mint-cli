@@ -25,7 +25,7 @@ tasks:
       - .tool-versions
 
   - key: go
-    call: mint/install-go 1.0.6
+    call: mint/install-go 1.0.7
     with:
       go-version: ${{ tasks.tool-versions.values.golang }}
 
@@ -55,7 +55,7 @@ tasks:
       printf "$aliasedVersion" > "$MINT_VALUES/aliased-version"
 
   - key: code
-    call: mint/git-clone 1.2.7
+    call: mint/git-clone 1.2.8
     after: verify-inputs
     with:
       preserve-git-dir: true
