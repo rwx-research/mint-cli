@@ -11,4 +11,4 @@ tasks:
     with:
       repository: https://github.com/rwx-research/mint-cli.git
       ref: ${{ init.sha }}
-      github-access-token: ${{ vaults.mint_leaves_update.github-apps.mint-rwx-mint-leaves-update.token }}
+      github-access-token: ${{ github-apps.rwx-bot.token }}
