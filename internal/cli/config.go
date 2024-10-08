@@ -6,22 +6,16 @@ import (
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/errors"
-	"github.com/rwx-research/mint-cli/internal/fs"
 )
 
 type Config struct {
-	APIClient  APIClient
-	FileSystem fs.FileSystem
-	SSHClient  SSHClient
+	APIClient APIClient
+	SSHClient SSHClient
 }
 
 func (c Config) Validate() error {
 	if c.APIClient == nil {
 		return errors.New("missing Mint client")
-	}
-
-	if c.FileSystem == nil {
-		return errors.New("missing file-system interface")
 	}
 
 	if c.SSHClient == nil {

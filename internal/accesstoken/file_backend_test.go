@@ -2,34 +2,34 @@ package accesstoken_test
 
 import (
 	"io"
-	gofs "io/fs"
+	"io/fs"
+	"os"
+	"path"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
-	"github.com/rwx-research/mint-cli/internal/fs"
-	"github.com/rwx-research/mint-cli/internal/mocks"
 )
 
 var _ = Describe("FileBackend", func() {
-	var mockFS *mocks.FileSystem
+	var tmp string
 
 	BeforeEach(func() {
-		mockFS = new(mocks.FileSystem)
+		var err error
+		tmp, err = os.MkdirTemp(os.TempDir(), "file-backend")
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		err := os.RemoveAll(tmp)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	Describe("Get", func() {
 		Context("when the access token file does not exist", func() {
-			BeforeEach(func() {
-				mockFS.MockOpen = func(name string) (fs.File, error) {
-					Expect(name).To(Equal("some/dir/accesstoken"))
-					return nil, gofs.ErrNotExist
-				}
-			})
-
 			It("returns an empty token", func() {
-				backend, err := accesstoken.NewFileBackend("some/dir", mockFS)
+				backend, err := accesstoken.NewFileBackend(tmp)
 				Expect(err).NotTo(HaveOccurred())
 
 				token, err := backend.Get()
@@ -40,33 +40,29 @@ var _ = Describe("FileBackend", func() {
 
 		Context("when the access token file is otherwise unable to be opened", func() {
 			BeforeEach(func() {
-				mockFS.MockOpen = func(name string) (fs.File, error) {
-					Expect(name).To(Equal("some/dir/accesstoken"))
-					return nil, gofs.ErrPermission
-				}
+				Expect(os.Chmod(tmp, 0o000)).NotTo(HaveOccurred())
 			})
 
 			It("returns an error", func() {
-				backend, err := accesstoken.NewFileBackend("some/dir", mockFS)
+				backend, err := accesstoken.NewFileBackend(tmp)
 				Expect(err).NotTo(HaveOccurred())
 
 				token, err := backend.Get()
+				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("unable to open"))
-				Expect(err).To(MatchError(gofs.ErrPermission))
+				Expect(err).To(MatchError(fs.ErrPermission))
 				Expect(token).To(Equal(""))
 			})
 		})
 
 		Context("when the access token file is present and has contents", func() {
 			BeforeEach(func() {
-				mockFS.MockOpen = func(name string) (fs.File, error) {
-					Expect(name).To(Equal("some/dir/accesstoken"))
-					return mocks.NewFile("the-token"), nil
-				}
+				err := os.WriteFile(path.Join(tmp, "accesstoken"), []byte("the-token"), 0o644)
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("returns the token", func() {
-				backend, err := accesstoken.NewFileBackend("some/dir", mockFS)
+				backend, err := accesstoken.NewFileBackend(tmp)
 				Expect(err).NotTo(HaveOccurred())
 
 				token, err := backend.Get()
@@ -77,14 +73,12 @@ var _ = Describe("FileBackend", func() {
 
 		Context("when the access token file includes leading or trailing whitespace", func() {
 			BeforeEach(func() {
-				mockFS.MockOpen = func(name string) (fs.File, error) {
-					Expect(name).To(Equal("some/dir/accesstoken"))
-					return mocks.NewFile("\n  \t  the-token\t  \n \n"), nil
-				}
+				err := os.WriteFile(path.Join(tmp, "accesstoken"), []byte("\n  \t  the-token\t  \n \n"), 0o644)
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("returns the token with surrounding whitespace trimmed", func() {
-				backend, err := accesstoken.NewFileBackend("some/dir", mockFS)
+				backend, err := accesstoken.NewFileBackend(tmp)
 				Expect(err).NotTo(HaveOccurred())
 
 				token, err := backend.Get()
@@ -97,46 +91,28 @@ var _ = Describe("FileBackend", func() {
 	Describe("Set", func() {
 		Context("when creating the file errors", func() {
 			BeforeEach(func() {
-				mockFS.MockMkdirAll = func(path string) error {
-					Expect(path).To(Equal("some/dir"))
-					return nil
-				}
-				mockFS.MockCreate = func(name string) (fs.File, error) {
-					Expect(name).To(Equal("some/dir/accesstoken"))
-					return nil, gofs.ErrInvalid
-				}
+				Expect(os.Chmod(tmp, 0o400)).NotTo(HaveOccurred())
 			})
 
 			It("returns an error", func() {
-				backend, err := accesstoken.NewFileBackend("some/dir", mockFS)
+				backend, err := accesstoken.NewFileBackend(tmp)
 				Expect(err).NotTo(HaveOccurred())
 
 				err = backend.Set("the-token")
-				Expect(err.Error()).To(ContainSubstring("unable to create"))
-				Expect(err).To(MatchError(gofs.ErrInvalid))
+				Expect(err.Error()).To(ContainSubstring("permission denied"))
+				Expect(err).To(MatchError(fs.ErrPermission))
 			})
 		})
 
 		Context("when the file is created", func() {
-			var file *mocks.File
-
-			BeforeEach(func() {
-				mockFS.MockMkdirAll = func(path string) error {
-					Expect(path).To(Equal("some/dir"))
-					return nil
-				}
-				mockFS.MockCreate = func(name string) (fs.File, error) {
-					Expect(name).To(Equal("some/dir/accesstoken"))
-					file = mocks.NewFile("")
-					return file, nil
-				}
-			})
-
 			It("writes the token to the file", func() {
-				backend, err := accesstoken.NewFileBackend("some/dir", mockFS)
+				backend, err := accesstoken.NewFileBackend(tmp)
 				Expect(err).NotTo(HaveOccurred())
 
 				err = backend.Set("the-token")
+				Expect(err).NotTo(HaveOccurred())
+
+				file, err := os.Open(path.Join(tmp, "accesstoken"))
 				Expect(err).NotTo(HaveOccurred())
 
 				bytes, err := io.ReadAll(file)

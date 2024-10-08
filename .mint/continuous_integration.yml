@@ -141,5 +141,5 @@ tasks:
     env:
       RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
     filter:
-      - /mint
-      - /mint-testing/.mint/trigger-integration-test.yml
+      - mint
+      - mint-testing/.mint/trigger-integration-test.yml
