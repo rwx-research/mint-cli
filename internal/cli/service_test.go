@@ -82,13 +82,12 @@ var _ = Describe("CLI Service", func() {
 				var originalSpecifiedFileContent string
 				var originalMintDirFileContent string
 				var receivedSpecifiedFileContent string
-				var receivedMintDirFileContent string
+				var receivedMintDir []api.MintDirectoryEntry
 
 				BeforeEach(func() {
 					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
 					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
 					receivedSpecifiedFileContent = ""
-					receivedMintDirFileContent = ""
 
 					var err error
 
@@ -118,11 +117,13 @@ var _ = Describe("CLI Service", func() {
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
-						Expect(cfg.MintDirectory).To(HaveLen(1))
-						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint/mintdir-tasks.yml"))
+						Expect(cfg.MintDirectory).To(HaveLen(3))
+						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint"))
+						Expect(cfg.MintDirectory[1].Path).To(Equal(".mint/mintdir-tasks.json"))
+						Expect(cfg.MintDirectory[2].Path).To(Equal(".mint/mintdir-tasks.yml"))
 						Expect(cfg.UseCache).To(BeTrue())
 						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
-						receivedMintDirFileContent = cfg.MintDirectory[0].FileContents
+						receivedMintDir = cfg.MintDirectory
 						return &api.InitiateRunResult{
 							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
@@ -139,7 +140,10 @@ var _ = Describe("CLI Service", func() {
 
 				It("sends the file contents to cloud", func() {
 					Expect(receivedSpecifiedFileContent).To(Equal(originalSpecifiedFileContent))
-					Expect(receivedMintDirFileContent).To(Equal(originalMintDirFileContent))
+					Expect(receivedMintDir).NotTo(BeNil())
+					Expect(receivedMintDir[0].FileContents).To(Equal(""))
+					Expect(receivedMintDir[1].FileContents).To(Equal("some json"))
+					Expect(receivedMintDir[2].FileContents).To(Equal(originalMintDirFileContent))
 				})
 			})
 
@@ -173,7 +177,8 @@ var _ = Describe("CLI Service", func() {
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
-						Expect(cfg.MintDirectory).To(HaveLen(0))
+						Expect(cfg.MintDirectory).To(HaveLen(1))
+						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint"))
 						Expect(cfg.UseCache).To(BeTrue())
 						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
 						return &api.InitiateRunResult{
@@ -262,13 +267,12 @@ var _ = Describe("CLI Service", func() {
 				var originalSpecifiedFileContent string
 				var originalMintDirFileContent string
 				var receivedSpecifiedFileContent string
-				var receivedMintDirFileContent string
+				var receivedMintDir []api.MintDirectoryEntry
 
 				BeforeEach(func() {
 					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
 					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
 					receivedSpecifiedFileContent = ""
-					receivedMintDirFileContent = ""
 
 					var err error
 
@@ -299,11 +303,13 @@ var _ = Describe("CLI Service", func() {
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
-						Expect(cfg.MintDirectory).To(HaveLen(1))
-						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint/mintdir-tasks.yml"))
+						Expect(cfg.MintDirectory).To(HaveLen(3))
+						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint"))
+						Expect(cfg.MintDirectory[1].Path).To(Equal(".mint/mintdir-tasks.json"))
+						Expect(cfg.MintDirectory[2].Path).To(Equal(".mint/mintdir-tasks.yml"))
 						Expect(cfg.UseCache).To(BeTrue())
 						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
-						receivedMintDirFileContent = cfg.MintDirectory[0].FileContents
+						receivedMintDir = cfg.MintDirectory
 						return &api.InitiateRunResult{
 							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
@@ -320,7 +326,10 @@ var _ = Describe("CLI Service", func() {
 
 				It("sends the file contents to cloud", func() {
 					Expect(receivedSpecifiedFileContent).To(Equal(originalSpecifiedFileContent))
-					Expect(receivedMintDirFileContent).To(Equal(originalMintDirFileContent))
+					Expect(receivedMintDir).NotTo(BeNil())
+					Expect(receivedMintDir[0].FileContents).To(Equal(""))
+					Expect(receivedMintDir[1].FileContents).To(Equal("some json"))
+					Expect(receivedMintDir[2].FileContents).To(Equal(originalMintDirFileContent))
 				})
 			})
 
@@ -355,7 +364,8 @@ var _ = Describe("CLI Service", func() {
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
-						Expect(cfg.MintDirectory).To(HaveLen(0))
+						Expect(cfg.MintDirectory).To(HaveLen(1))
+						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint"))
 						Expect(cfg.UseCache).To(BeTrue())
 						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
 						return &api.InitiateRunResult{
