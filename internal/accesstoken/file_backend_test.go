@@ -40,7 +40,7 @@ var _ = Describe("FileBackend", func() {
 
 		Context("when the access token file is otherwise unable to be opened", func() {
 			BeforeEach(func() {
-				os.Chmod(tmp, 0o000)
+				Expect(os.Chmod(tmp, 0o000)).NotTo(HaveOccurred())
 			})
 
 			It("returns an error", func() {
@@ -91,7 +91,7 @@ var _ = Describe("FileBackend", func() {
 	Describe("Set", func() {
 		Context("when creating the file errors", func() {
 			BeforeEach(func() {
-				os.Chmod(tmp, 0o400)
+				Expect(os.Chmod(tmp, 0o400)).NotTo(HaveOccurred())
 			})
 
 			It("returns an error", func() {

@@ -1189,8 +1189,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				BeforeEach(func() {
 					leafError = errors.New("cannot get leaf versions")
 
-					var err error
-					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(""), 0o644)
+					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(""), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -1211,8 +1210,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				BeforeEach(func() {
 					majorLeafVersions["mint/setup-node"] = "1.2.3"
 
-					var err error
-					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
+					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.2.3
@@ -1327,8 +1325,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 			Context("when a leaf cannot be found", func() {
 				BeforeEach(func() {
-					var err error
-					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
+					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.0.1
@@ -1373,8 +1370,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				BeforeEach(func() {
 					majorLeafVersions["mint/setup-node"] = "1.0.3"
 
-					var err error
-					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
+					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.1.1
@@ -1422,8 +1418,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				Context("while referencing the latest minor version", func() {
 					BeforeEach(func() {
-						var err error
-						err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
+						err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.1.1
@@ -1448,8 +1443,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				Context("while not referencing the latest minor version", func() {
 					BeforeEach(func() {
-						var err error
-						err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
+						err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.0.9
