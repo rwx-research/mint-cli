@@ -1,69 +1,66 @@
 package accesstoken
 
 import (
-	gofs "io/fs"
-
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/user"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/rwx-research/mint-cli/internal/errors"
-	"github.com/rwx-research/mint-cli/internal/fs"
 )
 
 type FileBackend struct {
-	Dir        string
-	FileSystem fs.FileSystem
+	Dir string
 }
 
-func NewFileBackend(dir string, filesystem fs.FileSystem) (*FileBackend, error) {
+func NewFileBackend(dir string) (*FileBackend, error) {
 	dir, err := expandTilde(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	return &FileBackend{Dir: dir, FileSystem: filesystem}, nil
+	return &FileBackend{Dir: dir}, nil
 }
 
 func (f FileBackend) Get() (string, error) {
-	filepath := path.Join(f.Dir, "accesstoken")
-	fd, err := f.FileSystem.Open(path.Join(f.Dir, "accesstoken"))
+	path := filepath.Join(f.Dir, "accesstoken")
+	fd, err := os.Open(path)
 	if err != nil {
-		if errors.Is(err, gofs.ErrNotExist) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return "", nil
 		}
 
-		return "", errors.Wrapf(err, "unable to open %q", filepath)
+		return "", errors.Wrapf(err, "unable to open %q", path)
 	}
 	defer fd.Close()
 
 	contents, err := io.ReadAll(fd)
 	if err != nil {
-		return "", errors.Wrapf(err, "error reading %q", filepath)
+		return "", errors.Wrapf(err, "error reading %q", path)
 	}
 
 	return strings.TrimSpace(string(contents)), nil
 }
 
 func (f FileBackend) Set(value string) error {
-	err := f.FileSystem.MkdirAll(f.Dir)
+	err := os.MkdirAll(f.Dir, os.ModePerm)
 	if err != nil {
 		return errors.Wrapf(err, "unable to create %q", f.Dir)
 	}
 
-	filepath := path.Join(f.Dir, "accesstoken")
-	fd, err := f.FileSystem.Create(path.Join(f.Dir, "accesstoken"))
+	path := filepath.Join(f.Dir, "accesstoken")
+	fd, err := os.Create(path)
 	if err != nil {
-		return errors.Wrapf(err, "unable to create %q", filepath)
+		return errors.Wrapf(err, "unable to create %q", path)
 	}
 	defer fd.Close()
 
 	_, err = io.WriteString(fd, value)
 	if err != nil {
-		return errors.Wrapf(err, "unable to write token to %q", filepath)
+		return errors.Wrapf(err, "unable to write token to %q", path)
 	}
 
 	return nil
@@ -78,7 +75,7 @@ func expandTilde(dir string) (string, error) {
 	}
 
 	if strings.HasPrefix(dir, tildeSlash) {
-		return path.Join(user.HomeDir, strings.TrimPrefix(dir, tildeSlash)), nil
+		return filepath.Join(user.HomeDir, strings.TrimPrefix(dir, tildeSlash)), nil
 	} else if dir == "~" {
 		return user.HomeDir, nil
 	} else {

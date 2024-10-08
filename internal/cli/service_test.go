@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -17,8 +18,6 @@ import (
 	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/rwx-research/mint-cli/internal/errors"
-	"github.com/rwx-research/mint-cli/internal/fs"
-	"github.com/rwx-research/mint-cli/internal/memoryfs"
 	"github.com/rwx-research/mint-cli/internal/messages"
 	"github.com/rwx-research/mint-cli/internal/mocks"
 
@@ -27,23 +26,42 @@ import (
 
 var _ = Describe("CLI Service", func() {
 	var (
-		config  cli.Config
-		service cli.Service
-		mockAPI *mocks.API
-		mockFS  *mocks.FileSystem
-		mockSSH *mocks.SSH
+		config     cli.Config
+		service    cli.Service
+		mockAPI    *mocks.API
+		mockSSH    *mocks.SSH
+		tmp        string
+		originalWd string
 	)
 
 	BeforeEach(func() {
+		var err error
+		tmp, err = os.MkdirTemp(os.TempDir(), "cli-service")
+		Expect(err).NotTo(HaveOccurred())
+
+		originalWd, err = os.Getwd()
+		Expect(err).NotTo(HaveOccurred())
+
+		err = os.Chdir(tmp)
+		Expect(err).NotTo(HaveOccurred())
+
 		mockAPI = new(mocks.API)
-		mockFS = new(mocks.FileSystem)
 		mockSSH = new(mocks.SSH)
 
 		config = cli.Config{
-			APIClient:  mockAPI,
-			FileSystem: mockFS,
-			SSHClient:  mockSSH,
+			APIClient: mockAPI,
+			SSHClient: mockSSH,
 		}
+	})
+
+	AfterEach(func() {
+		var err error
+
+		err = os.Chdir(originalWd)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = os.RemoveAll(tmp)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	JustBeforeEach(func() {
@@ -71,34 +89,32 @@ var _ = Describe("CLI Service", func() {
 					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
 					receivedSpecifiedFileContent = ""
 					receivedMintDirFileContent = ""
+
+					var err error
+
+					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
+					err = os.MkdirAll(workingDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.Chdir(workingDir)
+					Expect(err).NotTo(HaveOccurred())
+
+					mintDir := filepath.Join(tmp, "some", "path", "to", ".mint")
+					err = os.MkdirAll(mintDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "mintdir-tasks.yml"), []byte(originalMintDirFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "mintdir-tasks.json"), []byte("some json"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
 					runConfig.MintFilePath = "mint.yml"
 					runConfig.MintDirectory = ""
 
-					mockFS.MockGetwd = func() (string, error) {
-						return "/some/path/to/working/directory", nil
-					}
-					mockFS.MockExists = func(name string) (bool, error) {
-						return name == "/some/path/to/.mint", nil
-					}
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("/some/path/to/.mint"))
-						return []fs.DirEntry{
-							mocks.DirEntry{FileName: "mintdir-tasks.yml"},
-							mocks.DirEntry{FileName: "mintdir-tasks.json"},
-						}, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "mint.yml" {
-							file := mocks.NewFile(originalSpecifiedFileContent)
-							return file, nil
-						} else if name == "/some/path/to/.mint/mintdir-tasks.yml" {
-							file := mocks.NewFile(originalMintDirFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
@@ -134,28 +150,26 @@ var _ = Describe("CLI Service", func() {
 				BeforeEach(func() {
 					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
 					receivedSpecifiedFileContent = ""
+
+					var err error
+
+					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
+					err = os.MkdirAll(workingDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.Chdir(workingDir)
+					Expect(err).NotTo(HaveOccurred())
+
+					mintDir := filepath.Join(tmp, "some", "path", "to", ".mint")
+					err = os.MkdirAll(mintDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
 					runConfig.MintFilePath = "mint.yml"
 					runConfig.MintDirectory = ""
 
-					mockFS.MockGetwd = func() (string, error) {
-						return "/some/path/to/working/directory", nil
-					}
-					mockFS.MockExists = func(name string) (bool, error) {
-						return name == "/some/path/to/.mint", nil
-					}
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("/some/path/to/.mint"))
-						return []fs.DirEntry{}, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "mint.yml" {
-							file := mocks.NewFile(originalSpecifiedFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
@@ -188,24 +202,22 @@ var _ = Describe("CLI Service", func() {
 				BeforeEach(func() {
 					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
 					receivedSpecifiedFileContent = ""
+
+					var err error
+
+					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
+					err = os.MkdirAll(workingDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.Chdir(workingDir)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
 					runConfig.MintFilePath = "mint.yml"
 					runConfig.MintDirectory = ""
 
-					mockFS.MockGetwd = func() (string, error) {
-						return "/some/path/to/working/directory", nil
-					}
-					mockFS.MockExists = func(name string) (bool, error) {
-						return false, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "mint.yml" {
-							file := mocks.NewFile(originalSpecifiedFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
@@ -257,28 +269,33 @@ var _ = Describe("CLI Service", func() {
 					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
 					receivedSpecifiedFileContent = ""
 					receivedMintDirFileContent = ""
-					runConfig.MintFilePath = "mint.yml"
-					runConfig.MintDirectory = "some-dir"
 
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("some-dir"))
-						return []fs.DirEntry{
-							mocks.DirEntry{FileName: "mintdir-tasks.yml"},
-							mocks.DirEntry{FileName: "mintdir-tasks.json"},
-						}, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "mint.yml" {
-							file := mocks.NewFile(originalSpecifiedFileContent)
-							return file, nil
-						} else if name == "some-dir/mintdir-tasks.yml" {
-							file := mocks.NewFile(originalMintDirFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
+					var err error
+
+					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
+					err = os.MkdirAll(workingDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.Chdir(workingDir)
+					Expect(err).NotTo(HaveOccurred())
+
+					// note this is not in the heirarchy of the mint file or the working directory
+					mintDir := filepath.Join(tmp, "other", "path", "to", ".mint")
+					err = os.MkdirAll(mintDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "mintdir-tasks.yml"), []byte(originalMintDirFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "mintdir-tasks.json"), []byte("some json"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					runConfig.MintFilePath = "mint.yml"
+					runConfig.MintDirectory = mintDir
+
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
@@ -314,22 +331,27 @@ var _ = Describe("CLI Service", func() {
 				BeforeEach(func() {
 					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
 					receivedSpecifiedFileContent = ""
-					runConfig.MintFilePath = "mint.yml"
-					runConfig.MintDirectory = "some-dir"
 
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("some-dir"))
-						return []fs.DirEntry{}, nil
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "mint.yml" {
-							file := mocks.NewFile(originalSpecifiedFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
+					var err error
+
+					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
+					err = os.MkdirAll(workingDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.Chdir(workingDir)
+					Expect(err).NotTo(HaveOccurred())
+
+					// note this is not in the heirarchy of the mint file or the working directory
+					mintDir := filepath.Join(tmp, "other", "path", "to", ".mint")
+					err = os.MkdirAll(mintDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					runConfig.MintFilePath = "mint.yml"
+					runConfig.MintDirectory = mintDir
+
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
@@ -360,22 +382,24 @@ var _ = Describe("CLI Service", func() {
 
 				BeforeEach(func() {
 					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
-					runConfig.MintFilePath = "mint.yml"
-					runConfig.MintDirectory = "some-dir"
 
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						Expect(name).To(Equal("some-dir"))
-						return nil, os.ErrNotExist
-					}
-					mockFS.MockOpen = func(name string) (fs.File, error) {
-						if name == "mint.yml" {
-							file := mocks.NewFile(originalSpecifiedFileContent)
-							return file, nil
-						} else {
-							Expect(name).To(BeNil())
-							return nil, errors.New("file does not exist")
-						}
-					}
+					var err error
+
+					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
+					err = os.MkdirAll(workingDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.Chdir(workingDir)
+					Expect(err).NotTo(HaveOccurred())
+
+					// note this is not in the heirarchy of the mint file or the working directory
+					mintDir := filepath.Join(tmp, "other", "path", "to", ".mint")
+
+					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					runConfig.MintFilePath = "mint.yml"
+					runConfig.MintDirectory = mintDir
 				})
 
 				It("returns an error", func() {
@@ -1001,6 +1025,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 		})
 
 		Context("when reading secrets from a file", func() {
+			var secretsFile string
+
 			BeforeEach(func() {
 				mockAPI.MockSetSecretsInVault = func(ssivc api.SetSecretsInVaultConfig) (*api.SetSecretsInVaultResult, error) {
 					sort.Slice(ssivc.Secrets, func(i, j int) bool {
@@ -1020,18 +1046,18 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					}, nil
 				}
 
-				mockFS.MockOpen = func(name string) (fs.File, error) {
-					Expect(name).To(Equal("secrets.txt"))
-					file := mocks.NewFile("A=123\nB=\"xyz\"\nC='q\\nqq'\nD=\"a multiline\nstring\nspanning lines\"")
-					return file, nil
-				}
+				var err error
+
+				secretsFile = filepath.Join(tmp, "secrets.txt")
+				err = os.WriteFile(secretsFile, []byte("A=123\nB=\"xyz\"\nC='q\\nqq'\nD=\"a multiline\nstring\nspanning lines\""), 0o644)
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("is successful", func() {
 				err := service.SetSecretsInVault(cli.SetSecretsInVaultConfig{
 					Vault:   "default",
 					Secrets: []string{},
-					File:    "secrets.txt",
+					File:    secretsFile,
 					Stdout:  &stdout,
 				})
 
@@ -1054,13 +1080,18 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 		Context("when no files provided", func() {
 			Context("when no yaml files found in the default directory", func() {
+				var mintDir string
+
 				BeforeEach(func() {
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						return []fs.DirEntry{
-							mocks.DirEntry{FileName: "foo.txt"},
-							mocks.DirEntry{FileName: "bar.json"},
-						}, nil
-					}
+					var err error
+
+					mintDir = tmp
+
+					err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "bar.json"), []byte("some json"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				It("returns an error", func() {
@@ -1068,89 +1099,84 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
 						Files:                    []string{},
-						DefaultDir:               ".mint",
+						DefaultDir:               mintDir,
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("no files provided, and no yaml files found in directory .mint"))
+					Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("no files provided, and no yaml files found in directory %s", mintDir)))
 				})
 			})
 
 			Context("when yaml files are found in the specified directory", func() {
-				var openedFiles []string
+				var mintDir string
 
 				BeforeEach(func() {
-					openedFiles = []string{}
+					var err error
 
-					mockFS.MockReadDir = func(name string) ([]fs.DirEntry, error) {
-						return []fs.DirEntry{
-							mocks.DirEntry{FileName: "foo.txt"},
-							mocks.DirEntry{FileName: "bar.yaml"},
-							mocks.DirEntry{FileName: "baz.yml"},
-						}, nil
-					}
-					mockFS.MockOpen = func(path string) (fs.File, error) {
-						openedFiles = append(openedFiles, path)
-						file := mocks.NewFile("")
-						return file, nil
-					}
-					mockFS.MockCreate = func(path string) (fs.File, error) {
-						openedFiles = append(openedFiles, path)
-						file := mocks.NewFile("")
-						return file, nil
-					}
+					mintDir = tmp
 
+					err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
+						tasks:
+							- key: foo
+								call: mint/setup-node 1.2.3
+					`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
+						tasks:
+							- key: foo
+								call: mint/setup-node 1.2.3
+					`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				BeforeEach(func() {
 					mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
 						return &api.LeafVersionsResult{
-							LatestMajor: map[string]string{},
+							LatestMajor: map[string]string{"mint/setup-node": "1.3.0"},
 						}, nil
 					}
 				})
 
 				It("uses the default directory", func() {
-					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+					var err error
+
+					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
 						Files:                    []string{},
-						DefaultDir:               ".mint",
+						DefaultDir:               mintDir,
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
-
 					Expect(err).NotTo(HaveOccurred())
-					Expect(openedFiles).To(ContainElement(".mint/bar.yaml"))
-					Expect(openedFiles).To(ContainElement(".mint/baz.yml"))
+
+					var contents []byte
+
+					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0"))
+
+					contents, err = os.ReadFile(filepath.Join(tmp, "baz.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0"))
 				})
 			})
 		})
 
 		Context("with files", func() {
-			var originalFiles map[string]string
-			var writtenFiles map[string]*mocks.File
 			var majorLeafVersions map[string]string
 			var minorLeafVersions map[string]map[string]string
 			var leafError error
 
 			BeforeEach(func() {
-				originalFiles = make(map[string]string)
-				writtenFiles = make(map[string]*mocks.File)
 				majorLeafVersions = make(map[string]string)
 				minorLeafVersions = make(map[string]map[string]string)
 				leafError = nil
 
-				mockFS.MockOpen = func(path string) (fs.File, error) {
-					content, ok := originalFiles[path]
-					if !ok {
-						return nil, errors.New("file not found")
-					}
-					file := mocks.NewFile(content)
-					return file, nil
-				}
-				mockFS.MockCreate = func(path string) (fs.File, error) {
-					file := mocks.NewFile("")
-					writtenFiles[path] = file
-					return file, nil
-				}
 				mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
 					return &api.LeafVersionsResult{
 						LatestMajor: majorLeafVersions,
@@ -1162,14 +1188,17 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			Context("when the leaf versions cannot be retrieved", func() {
 				BeforeEach(func() {
 					leafError = errors.New("cannot get leaf versions")
-					originalFiles["foo.yaml"] = ""
+
+					var err error
+					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(""), 0o644)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				It("returns an error", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1181,23 +1210,30 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			Context("when all leaves are already up-to-date", func() {
 				BeforeEach(func() {
 					majorLeafVersions["mint/setup-node"] = "1.2.3"
-					originalFiles["foo.yaml"] = `
+
+					var err error
+					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.2.3
-					`
+					`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				It("does not change the file content", func() {
-					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+					var err error
+
+					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
-
 					Expect(err).NotTo(HaveOccurred())
-					Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+
+					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.2.3
@@ -1208,7 +1244,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1221,37 +1257,52 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				BeforeEach(func() {
 					majorLeafVersions["mint/setup-node"] = "1.2.3"
 					majorLeafVersions["mint/setup-ruby"] = "1.0.1"
-					originalFiles["foo.yaml"] = `
+
+					var err error
+
+					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.0.1
 						- key: bar
 							call: mint/setup-ruby 0.0.1
-					`
-					originalFiles["bar.yaml"] = `
+					`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(tmp, "bar.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-ruby 1.0.0
-					`
+					`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				It("updates all files", func() {
-					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+					var err error
+
+					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml", "bar.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
-
 					Expect(err).NotTo(HaveOccurred())
-					Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+
+					var contents []byte
+
+					contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.2.3
 						- key: bar
 							call: mint/setup-ruby 1.0.1
 					`))
-					Expect(writtenFiles["bar.yaml"].Buffer.String()).To(Equal(`
+
+					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
 					tasks:
 						- key: foo
 							call: mint/setup-ruby 1.0.1
@@ -1262,7 +1313,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml", "bar.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1276,23 +1327,29 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 			Context("when a leaf cannot be found", func() {
 				BeforeEach(func() {
-					originalFiles["foo.yaml"] = `
+					var err error
+					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.0.1
-					`
+					`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				It("does not modify the file", func() {
-					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+					var err error
+
+					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
-
 					Expect(err).NotTo(HaveOccurred())
-					Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+
+					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.0.1
@@ -1303,7 +1360,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1315,23 +1372,30 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			Context("when a leaf reference is a later version than the latest major", func() {
 				BeforeEach(func() {
 					majorLeafVersions["mint/setup-node"] = "1.0.3"
-					originalFiles["foo.yaml"] = `
+
+					var err error
+					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.1.1
-					`
+					`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				It("updates the leaf", func() {
-					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+					var err error
+
+					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
-
 					Expect(err).NotTo(HaveOccurred())
-					Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+
+					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.0.3
@@ -1351,22 +1415,26 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Expect(service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Stdout:                   &stdout,
 						Stderr:                   &stderr,
-						Files:                    []string{"foo.yaml"},
+						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMinorVersion,
 					})).To(Succeed())
 				})
 
 				Context("while referencing the latest minor version", func() {
 					BeforeEach(func() {
-						originalFiles["foo.yaml"] = `
+						var err error
+						err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.1.1
-						`
+						`), 0o644)
+						Expect(err).NotTo(HaveOccurred())
 					})
 
 					It("does not modify the file", func() {
-						Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+						contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.1.1
@@ -1380,15 +1448,19 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				Context("while not referencing the latest minor version", func() {
 					BeforeEach(func() {
-						originalFiles["foo.yaml"] = `
+						var err error
+						err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.0.9
-						`
+						`), 0o644)
+						Expect(err).NotTo(HaveOccurred())
 					})
 
 					It("updates the file", func() {
-						Expect(writtenFiles["foo.yaml"].Buffer.String()).To(Equal(`
+						contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(`
 					tasks:
 						- key: foo
 							call: mint/setup-node 1.1.1
@@ -1408,16 +1480,13 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 		var truncatedDiff bool
 		var lintConfig cli.LintConfig
 		var stdout bytes.Buffer
-		var memfs *memoryfs.MemoryFS
 
 		BeforeEach(func() {
 			truncatedDiff = format.TruncatedDiff
 			format.TruncatedDiff = false
 
-			memfs = memoryfs.NewFS()
-			Expect(memfs.MkdirAll("/some/path/to")).NotTo(HaveOccurred())
-			Expect(memfs.Chdir("/some/path/to")).NotTo(HaveOccurred())
-			config.FileSystem = memfs
+			Expect(os.MkdirAll(filepath.Join(tmp, "some/path/to/.mint"), 0o755)).NotTo(HaveOccurred())
+			Expect(os.Chdir(filepath.Join(tmp, "some/path/to"))).NotTo(HaveOccurred())
 
 			stdout.Reset()
 			lintConfig = cli.LintConfig{Output: io.Writer(&stdout), OutputFormat: cli.LintOutputNone}
@@ -1429,9 +1498,9 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 		Context("with multiple errors", func() {
 			BeforeEach(func() {
-				Expect(memfs.WriteFileString("mint1.yml", "mint1 contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/base.yml", ".mint/base.yml contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/base.json", ".mint/base.json contents")).NotTo(HaveOccurred())
+				Expect(os.WriteFile("mint1.yml", []byte("mint1 contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base.yml", []byte(".mint/base.yml contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base.json", []byte(".mint/base.json contents"), 0o644)).NotTo(HaveOccurred())
 
 				lintConfig.MintFilePaths = []string{"mint1.yml", ".mint/base.yml"}
 
@@ -1511,9 +1580,9 @@ Checked 2 files and found 4 problems.
 
 		Context("with multiple errors including stack traces", func() {
 			BeforeEach(func() {
-				Expect(memfs.WriteFileString("mint1.yml", "mint1 contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/base.yml", ".mint/base.yml contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/base.json", ".mint/base.json contents")).NotTo(HaveOccurred())
+				Expect(os.WriteFile("mint1.yml", []byte("mint1 contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base.yml", []byte(".mint/base.yml contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base.json", []byte(".mint/base.json contents"), 0o644)).NotTo(HaveOccurred())
 
 				lintConfig.MintFilePaths = []string{"mint1.yml", ".mint/base.yml"}
 
@@ -1523,54 +1592,54 @@ Checked 2 files and found 4 problems.
 						Problems: []api.LintProblem{
 							{
 								Severity: "error",
-								Message: "message 1\nmessage 1a",
+								Message:  "message 1\nmessage 1a",
 								StackTrace: []messages.StackEntry{
 									{
-											FileName: "mint1.yml",
-											Line:     11,
-											Column:   22,
+										FileName: "mint1.yml",
+										Line:     11,
+										Column:   22,
 									},
 								},
-								Frame: "  4 |     run: echo hi\n> 5 |     bad: true\n    |     ^\n  6 |     env:\n  7 |       A:",
+								Frame:  "  4 |     run: echo hi\n> 5 |     bad: true\n    |     ^\n  6 |     env:\n  7 |       A:",
 								Advice: "advice 1\nadvice 1a",
 							},
 							{
 								Severity: "error",
-								Message: "message 2\nmessage 2a",
+								Message:  "message 2\nmessage 2a",
 								StackTrace: []messages.StackEntry{
 									{
-											FileName: "mint1.yml",
-											Line:     22,
-											Column:   11,
-											Name:     "*alias",
+										FileName: "mint1.yml",
+										Line:     22,
+										Column:   11,
+										Name:     "*alias",
 									},
 									{
-											FileName: "mint1.yml",
-											Line:     5,
-											Column:   22,
+										FileName: "mint1.yml",
+										Line:     5,
+										Column:   22,
 									},
 								},
 							},
 							{
 								Severity: "warning",
-								Message: "message 3",
+								Message:  "message 3",
 								StackTrace: []messages.StackEntry{
 									{
-											FileName: "mint1.yml",
-											Line:     2,
-											Column:   6,
+										FileName: "mint1.yml",
+										Line:     2,
+										Column:   6,
 									},
 								},
 								Advice: "advice 3\nadvice 3a",
 							},
 							{
 								Severity: "warning",
-								Message: "message 4",
+								Message:  "message 4",
 								StackTrace: []messages.StackEntry{
 									{
-											FileName: "mint1.yml",
-											Line:     7,
-											Column:   9,
+										FileName: "mint1.yml",
+										Line:     7,
+										Column:   9,
 									},
 								},
 							},
@@ -1648,9 +1717,9 @@ Checked 2 files and found 4 problems.
 
 		Context("with no errors", func() {
 			BeforeEach(func() {
-				Expect(memfs.WriteFileString("mint1.yml", "mint1 contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/base.yml", ".mint/base.yml contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/base.json", ".mint/base.json contents")).NotTo(HaveOccurred())
+				Expect(os.WriteFile("mint1.yml", []byte("mint1 contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base.yml", []byte(".mint/base.yml contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base.json", []byte(".mint/base.json contents"), 0o644)).NotTo(HaveOccurred())
 
 				lintConfig.MintFilePaths = []string{"mint1.yml", ".mint/base.yml"}
 
@@ -1697,18 +1766,17 @@ Checked 2 files and found 4 problems.
 			})
 		})
 
-
 		Context("with snippets", func() {
 			BeforeEach(func() {
-				Expect(memfs.WriteFileString(".mint/base1.yml", ".mint/base1.yml contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/base2.yml", ".mint/base2.yml contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/_snippet1.yml", ".mint/_snippet1.yml contents")).NotTo(HaveOccurred())
-				Expect(memfs.WriteFileString(".mint/_snippet2.yml", ".mint/_snippet2.yml contents")).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base1.yml", []byte(".mint/base1.yml contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base2.yml", []byte(".mint/base2.yml contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/_snippet1.yml", []byte(".mint/_snippet1.yml contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/_snippet2.yml", []byte(".mint/_snippet2.yml contents"), 0o644)).NotTo(HaveOccurred())
 
 				lintConfig.OutputFormat = cli.LintOutputOneLine
 			})
 
-			Context("without targeting", func () {
+			Context("without targeting", func() {
 				It("doesn't target the snippets", func() {
 					mockAPI.MockLint = func(cfg api.LintConfig) (*api.LintResult, error) {
 						runDefinitionPaths := make([]string, len(cfg.TaskDefinitions))
@@ -1725,7 +1793,7 @@ Checked 2 files and found 4 problems.
 				})
 			})
 
-			Context("with targeting", func () {
+			Context("with targeting", func() {
 				It("doesn't allow you target the snippets", func() {
 					lintConfig.MintFilePaths = []string{".mint/_snippet1.yml", ".mint/_snippet2.yml"}
 

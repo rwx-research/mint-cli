@@ -16,6 +16,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/dotenv"
 	"github.com/rwx-research/mint-cli/internal/errors"
+	"github.com/rwx-research/mint-cli/internal/fs"
 	"github.com/rwx-research/mint-cli/internal/messages"
 
 	"github.com/briandowns/spinner"
@@ -183,7 +184,7 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 	taskDefinitionYamlPaths := make([]string, 0)
 
 	for _, fileOrDir := range configFilePaths {
-		fi, err := s.Config.FileSystem.Stat(fileOrDir)
+		fi, err := os.Stat(fileOrDir)
 		if err != nil {
 			if errors.Is(err, errors.ErrFileNotExists) {
 				return nil, fmt.Errorf("you specified %q, but %q could not be found", fileOrDir, fileOrDir)
@@ -202,7 +203,7 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 		}
 	}
 
-	wd, err := s.Config.FileSystem.Getwd()
+	wd, err := os.Getwd()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to get current working directory")
 	}
@@ -433,7 +434,7 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 	}
 
 	if cfg.File != "" {
-		fd, err := s.FileSystem.Open(cfg.File)
+		fd, err := os.Open(cfg.File)
 		if err != nil {
 			return errors.Wrapf(err, "error while opening %q", cfg.File)
 		}
@@ -556,7 +557,7 @@ func (s Service) findLeafReferences(files []string) (map[string]map[string][]str
 	matches := make(map[string]map[string][]string)
 
 	for _, path := range files {
-		fd, err := s.FileSystem.Open(path)
+		fd, err := os.Open(path)
 		if err != nil {
 			return nil, errors.Wrapf(err, "error while opening %q", path)
 		}
@@ -592,7 +593,7 @@ func (s Service) findLeafReferences(files []string) (map[string]map[string][]str
 
 func (s Service) replaceInFiles(files []string, replacements map[string]string) error {
 	for _, path := range files {
-		fd, err := s.FileSystem.Open(path)
+		fd, err := os.Open(path)
 		if err != nil {
 			return errors.Wrapf(err, "error while opening %q", path)
 		}
@@ -608,7 +609,7 @@ func (s Service) replaceInFiles(files []string, replacements map[string]string) 
 			fileContentStr = strings.ReplaceAll(fileContentStr, old, new)
 		}
 
-		fd, err = s.FileSystem.Create(path)
+		fd, err = os.Create(path)
 		if err != nil {
 			return errors.Wrapf(err, "error while opening %q", path)
 		}
@@ -629,7 +630,7 @@ func (s Service) taskDefinitionsFromPaths(paths []string) ([]api.TaskDefinition,
 	taskDefinitions := make([]api.TaskDefinition, 0)
 
 	for _, path := range paths {
-		fd, err := s.FileSystem.Open(path)
+		fd, err := os.Open(path)
 		if err != nil {
 			return nil, errors.Wrapf(err, "error while opening %q", path)
 		}
@@ -653,7 +654,7 @@ func (s Service) taskDefinitionsFromPaths(paths []string) ([]api.TaskDefinition,
 func (s Service) yamlFilePathsInDirectory(dir string) ([]string, error) {
 	paths := make([]string, 0)
 
-	files, err := s.FileSystem.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to read %q", dir)
 	}
@@ -679,14 +680,14 @@ func (s Service) findMintDirectoryPath(configuredDirectory string) (string, erro
 		return configuredDirectory, nil
 	}
 
-	workingDirectory, err := s.FileSystem.Getwd()
+	workingDirectory, err := os.Getwd()
 	if err != nil {
 		return "", errors.Wrap(err, "unable to determine the working directory")
 	}
 
 	// otherwise, walk up the working directory looking at each basename
 	for {
-		workingDirHasMintDir, err := s.FileSystem.Exists(filepath.Join(workingDirectory, ".mint"))
+		workingDirHasMintDir, err := fs.Exists(filepath.Join(workingDirectory, ".mint"))
 		if err != nil {
 			return "", errors.Wrapf(err, "unable to determine if .mint exists in %q", workingDirectory)
 		}
@@ -734,11 +735,11 @@ func removeDuplicateStrings(list []string) []string {
 
 func findSnippets(fileNames []string) (nonSnippetFileNames []string, snippetFileNames []string) {
 	for _, fileName := range fileNames {
-			if strings.HasPrefix(path.Base(fileName), "_") {
-				snippetFileNames = append(snippetFileNames, fileName)
-			} else {
-				nonSnippetFileNames = append(nonSnippetFileNames, fileName)
-			}
+		if strings.HasPrefix(path.Base(fileName), "_") {
+			snippetFileNames = append(snippetFileNames, fileName)
+		} else {
+			nonSnippetFileNames = append(nonSnippetFileNames, fileName)
+		}
 	}
 	return nonSnippetFileNames, snippetFileNames
 }

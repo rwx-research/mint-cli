@@ -9,7 +9,6 @@ import (
 	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/rwx-research/mint-cli/internal/errors"
-	"github.com/rwx-research/mint-cli/internal/fs"
 	"github.com/rwx-research/mint-cli/internal/ssh"
 
 	"github.com/spf13/cobra"
@@ -31,10 +30,8 @@ var (
 		SilenceUsage:  true,
 		Version:       config.Version,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			filesystem := fs.Local{}
-
 			var err error
-			accessTokenBackend, err = accesstoken.NewFileBackend(fmt.Sprintf("~%v.mint", string(os.PathSeparator)), filesystem)
+			accessTokenBackend, err = accesstoken.NewFileBackend(fmt.Sprintf("~%v.mint", string(os.PathSeparator)))
 			if err != nil {
 				return errors.Wrap(err, "unable to initialize access token backend")
 			}
@@ -44,7 +41,7 @@ var (
 				return errors.Wrap(err, "unable to initialize API client")
 			}
 
-			service, err = cli.NewService(cli.Config{APIClient: c, FileSystem: filesystem, SSHClient: new(ssh.Client)})
+			service, err = cli.NewService(cli.Config{APIClient: c, SSHClient: new(ssh.Client)})
 			if err != nil {
 				return errors.Wrap(err, "unable to initialize CLI")
 			}
