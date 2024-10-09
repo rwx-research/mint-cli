@@ -27,7 +27,7 @@ func (c Config) Validate() error {
 type InitiateRunConfig struct {
 	InitializationParameters []InitializationParameter `json:"initialization_parameters"`
 	TaskDefinitions          []TaskDefinition          `json:"task_definitions"`
-	MintDirectory            []TaskDefinition          `json:"mint_directory"`
+	MintDirectory            []MintDirectoryEntry      `json:"mint_directory"`
 	TargetedTaskKeys         []string                  `json:"targeted_task_keys,omitempty"`
 	Title                    string                    `json:"title,omitempty"`
 	UseCache                 bool                      `json:"use_cache"`
@@ -86,8 +86,8 @@ func (lf LintProblem) FileLocation() string {
 	line := lf.Line
 	column := lf.Column
 
-	if (len(lf.StackTrace) > 0) {
-		lastStackEntry := lf.StackTrace[len(lf.StackTrace) - 1]
+	if len(lf.StackTrace) > 0 {
+		lastStackEntry := lf.StackTrace[len(lf.StackTrace)-1]
 		fileName = lastStackEntry.FileName
 		line = NullInt{
 			Value:  lastStackEntry.Line,
