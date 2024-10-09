@@ -111,16 +111,27 @@ var _ = Describe("CLI Service", func() {
 					err = os.WriteFile(filepath.Join(mintDir, "mintdir-tasks.json"), []byte("some json"), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
+					nestedDir := filepath.Join(mintDir, "some", "nested", "path")
+					err = os.MkdirAll(nestedDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(nestedDir, "tasks.yaml"), []byte("some nested yaml"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
 					runConfig.MintFilePath = "mint.yml"
 					runConfig.MintDirectory = ""
 
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
-						Expect(cfg.MintDirectory).To(HaveLen(3))
+						Expect(cfg.MintDirectory).To(HaveLen(7))
 						Expect(cfg.MintDirectory[0].Path).To(Equal(".mint"))
 						Expect(cfg.MintDirectory[1].Path).To(Equal(".mint/mintdir-tasks.json"))
 						Expect(cfg.MintDirectory[2].Path).To(Equal(".mint/mintdir-tasks.yml"))
+						Expect(cfg.MintDirectory[3].Path).To(Equal(".mint/some"))
+						Expect(cfg.MintDirectory[4].Path).To(Equal(".mint/some/nested"))
+						Expect(cfg.MintDirectory[5].Path).To(Equal(".mint/some/nested/path"))
+						Expect(cfg.MintDirectory[6].Path).To(Equal(".mint/some/nested/path/tasks.yaml"))
 						Expect(cfg.UseCache).To(BeTrue())
 						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
 						receivedMintDir = cfg.MintDirectory
@@ -144,6 +155,10 @@ var _ = Describe("CLI Service", func() {
 					Expect(receivedMintDir[0].FileContents).To(Equal(""))
 					Expect(receivedMintDir[1].FileContents).To(Equal("some json"))
 					Expect(receivedMintDir[2].FileContents).To(Equal(originalMintDirFileContent))
+					Expect(receivedMintDir[3].FileContents).To(Equal(""))
+					Expect(receivedMintDir[4].FileContents).To(Equal(""))
+					Expect(receivedMintDir[5].FileContents).To(Equal(""))
+					Expect(receivedMintDir[6].FileContents).To(Equal("some nested yaml"))
 				})
 			})
 
@@ -1142,6 +1157,17 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 								call: mint/setup-node 1.2.3
 					`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
+
+					nestedDir := filepath.Join(mintDir, "some", "nested", "dir")
+					err = os.MkdirAll(nestedDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(nestedDir, "tasks.yaml"), []byte(`
+						tasks:
+							- key: foo
+								call: mint/setup-node 1.2.3
+					`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				BeforeEach(func() {
@@ -1166,11 +1192,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 					var contents []byte
 
-					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
+					contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0"))
 
-					contents, err = os.ReadFile(filepath.Join(tmp, "baz.yaml"))
+					contents, err = os.ReadFile(filepath.Join(mintDir, "baz.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0"))
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "some", "nested", "dir", "tasks.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0"))
 				})
@@ -1804,6 +1834,32 @@ Checked 2 files and found 4 problems.
 					_, err := service.Lint(lintConfig)
 					Expect(err).To(MatchError("You cannot target snippets for linting, but you targeted the following snippets: .mint/_snippet1.yml, .mint/_snippet2.yml\n\nTo lint snippets, include them from a Mint run definition and lint the run definition."))
 				})
+			})
+		})
+
+		Context("when specific files are not targeted", func() {
+			var lintedDefinitions []api.TaskDefinition
+
+			BeforeEach(func() {
+				Expect(os.WriteFile("mint1.yml", []byte("mint1 contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base.yml", []byte(".mint/base.yml contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/base.json", []byte(".mint/base.json contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.MkdirAll(".mint/some/nested/dir", 0o755)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/some/nested/dir/tasks.yml", []byte(".mint/some/nested/dir/tasks.yml contents"), 0o644)).NotTo(HaveOccurred())
+				Expect(os.WriteFile(".mint/some/nested/dir/tasks.json", []byte(".mint/some/nested/dir/tasks.json contents"), 0o644)).NotTo(HaveOccurred())
+
+				mockAPI.MockLint = func(cfg api.LintConfig) (*api.LintResult, error) {
+					lintedDefinitions = cfg.TaskDefinitions
+					return &api.LintResult{Problems: []api.LintProblem{}}, nil
+				}
+			})
+
+			It("targets yaml files in the .mint dir recursively", func() {
+				_, err := service.Lint(lintConfig)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(lintedDefinitions).To(HaveLen(2))
+				Expect(lintedDefinitions[0].Path).To(Equal(".mint/base.yml"))
+				Expect(lintedDefinitions[1].Path).To(Equal(".mint/some/nested/dir/tasks.yml"))
 			})
 		})
 	})
