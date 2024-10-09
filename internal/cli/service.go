@@ -648,6 +648,7 @@ func (s Service) taskDefinitionsFromPaths(paths []string) ([]api.TaskDefinition,
 
 func (s Service) mintDirectoryEntries(dir string) ([]api.MintDirectoryEntry, error) {
 	mintDirectoryEntries := make([]api.MintDirectoryEntry, 0)
+	contentLength := 0
 
 	err := filepath.Walk(dir, func(pathInDir string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -688,6 +689,7 @@ func (s Service) mintDirectoryEntries(dir string) ([]api.MintDirectoryEntry, err
 				return fmt.Errorf("unable to read file %q: %w", pathInDir, err)
 			}
 
+			contentLength += len(contents)
 			fileContents = string(contents)
 		}
 
@@ -708,6 +710,9 @@ func (s Service) mintDirectoryEntries(dir string) ([]api.MintDirectoryEntry, err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve the entire contents of the .mint directory %q: %w", dir, err)
+	}
+	if contentLength > 5*1024*1024 {
+		return nil, fmt.Errorf("the size of the .mint directory at %q exceeds 5MiB", dir)
 	}
 
 	return mintDirectoryEntries, nil
