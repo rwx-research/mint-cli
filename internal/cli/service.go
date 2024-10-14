@@ -99,7 +99,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		return nil, errors.Wrap(err, "validation failed")
 	}
 
-	mintDirectoryYamlPaths := make([]string, 0)
+	mintDirectory := make([]api.MintDirectoryEntry, 0)
 	taskDefinitionYamlPath := cfg.MintFilePath
 
 	mintDirectoryPath, err := s.findMintDirectoryPath(cfg.MintDirectory)
@@ -109,35 +109,20 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 
 	// It's possible (when no directory is specified) that there is no .mint directory found during traversal
 	if mintDirectoryPath != "" {
-		paths, err := s.yamlFilePathsInDirectory(mintDirectoryPath)
+		mintDirectoryEntries, err := s.mintDirectoryEntries(mintDirectoryPath)
 		if err != nil {
 			if errors.Is(err, errors.ErrFileNotExists) {
 				return nil, fmt.Errorf("You specified --dir %q, but %q could not be found", cfg.MintDirectory, cfg.MintDirectory)
 			}
 
-			return nil, errors.Wrap(err, "unable to find yaml files in directory")
+			return nil, err
 		}
-		mintDirectoryYamlPaths = paths
+		mintDirectory = mintDirectoryEntries
 	}
 
-	mintDirectory, err := s.taskDefinitionsFromPaths(mintDirectoryYamlPaths)
+	taskDefinitions, err := s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
-	}
-
-	taskDefinitions, err := s.taskDefinitionsFromPaths([]string{taskDefinitionYamlPath})
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to read provided files")
-	}
-
-	// mintDirectory task definitions must have their paths relative to the .mint directory
-	for i, taskDefinition := range mintDirectory {
-		relPath, err := filepath.Rel(mintDirectoryPath, taskDefinition.Path)
-		if err != nil {
-			return nil, errors.Wrapf(err, "unable to determine relative path of %q", taskDefinition.Path)
-		}
-		taskDefinition.Path = filepath.Join(".mint", relPath)
-		mintDirectory[i] = taskDefinition
 	}
 
 	i := 0
@@ -178,11 +163,12 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("You specified a mint directory of %q, but %q could not be found", cfg.MintDirectory, cfg.MintDirectory)
 	}
-	configFilePaths = append(configFilePaths, mintDirectoryPath)
+	if mintDirectoryPath != "" {
+		configFilePaths = append(configFilePaths, mintDirectoryPath)
+	}
 	configFilePaths = removeDuplicateStrings(configFilePaths)
 
 	taskDefinitionYamlPaths := make([]string, 0)
-
 	for _, fileOrDir := range configFilePaths {
 		fi, err := os.Stat(fileOrDir)
 		if err != nil {
@@ -193,15 +179,19 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 		}
 
 		if fi.IsDir() {
-			paths, err := s.yamlFilePathsInDirectory(fileOrDir)
+			mintDirectory, err := s.mintDirectoryEntries(fileOrDir)
 			if err != nil {
 				return nil, errors.Wrap(err, "unable to find yaml files in directory")
 			}
-			taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, paths...)
+
+			for _, entry := range s.yamlFilesInMintDirectory(mintDirectory) {
+				taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, entry.OriginalPath)
+			}
 		} else {
 			taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, fileOrDir)
 		}
 	}
+	taskDefinitionYamlPaths = removeDuplicateStrings(taskDefinitionYamlPaths)
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -487,11 +477,17 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	if len(cfg.Files) > 0 {
 		files = cfg.Files
 	} else {
-		yamlFilePathsInDirectory, err := s.yamlFilePathsInDirectory(cfg.DefaultDir)
+		mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("unable to find yaml files in directory %s", cfg.DefaultDir))
+			return err
 		}
-		files = yamlFilePathsInDirectory
+
+		yamlFiles := make([]string, 0)
+		for _, entry := range s.yamlFilesInMintDirectory(mintDirectory) {
+			yamlFiles = append(yamlFiles, entry.OriginalPath)
+		}
+
+		files = yamlFiles
 	}
 
 	if len(files) == 0 {
@@ -650,31 +646,139 @@ func (s Service) taskDefinitionsFromPaths(paths []string) ([]api.TaskDefinition,
 	return taskDefinitions, nil
 }
 
-// yamlFilePathsInDirectory returns any *.yml and *.yaml files in a given directory, ignoring any sub-directories.
-func (s Service) yamlFilePathsInDirectory(dir string) ([]string, error) {
-	paths := make([]string, 0)
+func (s Service) mintDirectoryEntries(dir string) ([]api.MintDirectoryEntry, error) {
+	mintDirectoryEntries := make([]api.MintDirectoryEntry, 0)
+	contentLength := 0
 
-	files, err := os.ReadDir(dir)
+	err := filepath.Walk(dir, func(pathInDir string, info os.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("error reading %q: %w", pathInDir, err)
+		}
+
+		entry, entryContentLength, err := s.mintDirectoryEntry(pathInDir, info, dir)
+		if err != nil {
+			return err
+		}
+		contentLength += entryContentLength
+		mintDirectoryEntries = append(mintDirectoryEntries, entry)
+
+		return nil
+	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to read %q", dir)
+		return nil, fmt.Errorf("unable to retrieve the entire contents of the .mint directory %q: %w", dir, err)
+	}
+	if contentLength > 5*1024*1024 {
+		return nil, fmt.Errorf("the size of the .mint directory at %q exceeds 5MiB", dir)
 	}
 
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		if !strings.HasSuffix(file.Name(), ".yml") && !strings.HasSuffix(file.Name(), ".yaml") {
-			continue
-		}
-
-		paths = append(paths, filepath.Join(dir, file.Name()))
-	}
-
-	return paths, nil
+	return mintDirectoryEntries, nil
 }
 
-// yamlFilePathsInDirectory returns any *.yml and *.yaml files in a given directory, ignoring any sub-directories.
+// taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.
+// No validation takes place here.
+func (s Service) mintDirectoryEntriesFromPaths(paths []string) ([]api.MintDirectoryEntry, error) {
+	mintDirectoryEntries := make([]api.MintDirectoryEntry, 0)
+
+	for _, path := range paths {
+		fd, err := os.Open(path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		info, err := os.Lstat(path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while stating %q", path)
+		}
+
+		entry, _, err := s.mintDirectoryEntry(path, info, "")
+		if err != nil {
+			return nil, err
+		}
+
+		mintDirectoryEntries = append(mintDirectoryEntries, entry)
+	}
+
+	return mintDirectoryEntries, nil
+}
+
+func (s Service) mintDirectoryEntry(path string, info os.FileInfo, makePathRelativeTo string) (api.MintDirectoryEntry, int, error) {
+	mode := info.Mode()
+	permissions := mode.Perm()
+
+	var entryType string
+	switch mode.Type() {
+	case os.ModeDir:
+		entryType = "dir"
+	case os.ModeSymlink:
+		entryType = "symlink"
+	case os.ModeNamedPipe:
+		entryType = "named-pipe"
+	case os.ModeSocket:
+		entryType = "socket"
+	case os.ModeDevice:
+		entryType = "device"
+	case os.ModeCharDevice:
+		entryType = "char-device"
+	case os.ModeIrregular:
+		entryType = "irregular"
+	default:
+		if mode.IsRegular() {
+			entryType = "file"
+		} else {
+			entryType = "unknown"
+		}
+	}
+
+	var fileContents string
+	var contentLength int
+	if entryType == "file" {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return api.MintDirectoryEntry{}, contentLength, fmt.Errorf("unable to read file %q: %w", path, err)
+		}
+
+		contentLength = len(contents)
+		fileContents = string(contents)
+	}
+
+	relPath := path
+	if makePathRelativeTo != "" {
+		rel, err := filepath.Rel(makePathRelativeTo, path)
+		if err != nil {
+			return api.MintDirectoryEntry{}, contentLength, fmt.Errorf("unable to determine relative path of %q: %w", path, err)
+		}
+		relPath = filepath.ToSlash(filepath.Join(".mint", rel)) // Mint only supports unix-style path separators
+	}
+
+	return api.MintDirectoryEntry{
+		Type:         entryType,
+		OriginalPath: path,
+		Path:         relPath,
+		Permissions:  uint32(permissions),
+		FileContents: fileContents,
+	}, contentLength, nil
+}
+
+// yamlFilesInMintDirectory returns any *.yml and *.yaml files in a given mint directory
+func (s Service) yamlFilesInMintDirectory(mintDirectory []api.MintDirectoryEntry) []api.MintDirectoryEntry {
+	yamlEntries := make([]api.MintDirectoryEntry, 0)
+
+	for _, entry := range mintDirectory {
+		if entry.Type != "file" {
+			continue
+		}
+
+		if !strings.HasSuffix(entry.OriginalPath, ".yml") && !strings.HasSuffix(entry.OriginalPath, ".yaml") {
+			continue
+		}
+
+		yamlEntries = append(yamlEntries, entry)
+	}
+
+	return yamlEntries
+}
+
 func (s Service) findMintDirectoryPath(configuredDirectory string) (string, error) {
 	if configuredDirectory != "" {
 		return configuredDirectory, nil
