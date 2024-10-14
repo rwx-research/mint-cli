@@ -120,7 +120,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		mintDirectory = mintDirectoryEntries
 	}
 
-	taskDefinitions, err := s.taskDefinitionsFromPaths([]string{taskDefinitionYamlPath})
+	taskDefinitions, err := s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
 	}
@@ -655,56 +655,12 @@ func (s Service) mintDirectoryEntries(dir string) ([]api.MintDirectoryEntry, err
 			return fmt.Errorf("error reading %q: %w", pathInDir, err)
 		}
 
-		mode := info.Mode()
-		permissions := mode.Perm()
-
-		var entryType string
-		switch mode.Type() {
-		case os.ModeDir:
-			entryType = "dir"
-		case os.ModeSymlink:
-			entryType = "symlink"
-		case os.ModeNamedPipe:
-			entryType = "named-pipe"
-		case os.ModeSocket:
-			entryType = "socket"
-		case os.ModeDevice:
-			entryType = "device"
-		case os.ModeCharDevice:
-			entryType = "char-device"
-		case os.ModeIrregular:
-			entryType = "irregular"
-		default:
-			if mode.IsRegular() {
-				entryType = "file"
-			} else {
-				entryType = "unknown"
-			}
-		}
-
-		var fileContents string
-		if entryType == "file" {
-			contents, err := os.ReadFile(pathInDir)
-			if err != nil {
-				return fmt.Errorf("unable to read file %q: %w", pathInDir, err)
-			}
-
-			contentLength += len(contents)
-			fileContents = string(contents)
-		}
-
-		relPath, err := filepath.Rel(dir, pathInDir)
+		entry, entryContentLength, err := s.mintDirectoryEntry(pathInDir, info, dir)
 		if err != nil {
-			return fmt.Errorf("unable to determine relative path of %q: %w", pathInDir, err)
+			return err
 		}
-
-		mintDirectoryEntries = append(mintDirectoryEntries, api.MintDirectoryEntry{
-			Type:         entryType,
-			OriginalPath: pathInDir,
-			Path:         filepath.ToSlash(filepath.Join(".mint", relPath)), // Mint only supports unix-style path separators
-			Permissions:  uint32(permissions),
-			FileContents: fileContents,
-		})
+		contentLength += entryContentLength
+		mintDirectoryEntries = append(mintDirectoryEntries, entry)
 
 		return nil
 	})
@@ -716,6 +672,92 @@ func (s Service) mintDirectoryEntries(dir string) ([]api.MintDirectoryEntry, err
 	}
 
 	return mintDirectoryEntries, nil
+}
+
+// taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.
+// No validation takes place here.
+func (s Service) mintDirectoryEntriesFromPaths(paths []string) ([]api.MintDirectoryEntry, error) {
+	mintDirectoryEntries := make([]api.MintDirectoryEntry, 0)
+
+	for _, path := range paths {
+		fd, err := os.Open(path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		info, err := os.Lstat(path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error while stating %q", path)
+		}
+
+		entry, _, err := s.mintDirectoryEntry(path, info, "")
+		if err != nil {
+			return nil, err
+		}
+
+		mintDirectoryEntries = append(mintDirectoryEntries, entry)
+	}
+
+	return mintDirectoryEntries, nil
+}
+
+func (s Service) mintDirectoryEntry(path string, info os.FileInfo, makePathRelativeTo string) (api.MintDirectoryEntry, int, error) {
+	mode := info.Mode()
+	permissions := mode.Perm()
+
+	var entryType string
+	switch mode.Type() {
+	case os.ModeDir:
+		entryType = "dir"
+	case os.ModeSymlink:
+		entryType = "symlink"
+	case os.ModeNamedPipe:
+		entryType = "named-pipe"
+	case os.ModeSocket:
+		entryType = "socket"
+	case os.ModeDevice:
+		entryType = "device"
+	case os.ModeCharDevice:
+		entryType = "char-device"
+	case os.ModeIrregular:
+		entryType = "irregular"
+	default:
+		if mode.IsRegular() {
+			entryType = "file"
+		} else {
+			entryType = "unknown"
+		}
+	}
+
+	var fileContents string
+	var contentLength int
+	if entryType == "file" {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return api.MintDirectoryEntry{}, contentLength, fmt.Errorf("unable to read file %q: %w", path, err)
+		}
+
+		contentLength = len(contents)
+		fileContents = string(contents)
+	}
+
+	relPath := path
+	if makePathRelativeTo != "" {
+		rel, err := filepath.Rel(makePathRelativeTo, path)
+		if err != nil {
+			return api.MintDirectoryEntry{}, contentLength, fmt.Errorf("unable to determine relative path of %q: %w", path, err)
+		}
+		relPath = filepath.ToSlash(filepath.Join(".mint", rel)) // Mint only supports unix-style path separators
+	}
+
+	return api.MintDirectoryEntry{
+		Type:         entryType,
+		OriginalPath: path,
+		Path:         relPath,
+		Permissions:  uint32(permissions),
+		FileContents: fileContents,
+	}, contentLength, nil
 }
 
 // yamlFilesInMintDirectory returns any *.yml and *.yaml files in a given mint directory

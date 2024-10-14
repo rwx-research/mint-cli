@@ -43,8 +43,8 @@ var _ = Describe("API Client", func() {
 
 			initRunConfig := api.InitiateRunConfig{
 				InitializationParameters: []api.InitializationParameter{},
-				TaskDefinitions: []api.TaskDefinition{
-					{Path: "foo", FileContents: "echo 'bar'"},
+				TaskDefinitions: []api.MintDirectoryEntry{
+					{Path: "foo", FileContents: "echo 'bar'", Permissions: 0o644, Type: "file"},
 				},
 				TargetedTaskKeys: []string{},
 				UseCache:         false,
@@ -82,8 +82,8 @@ var _ = Describe("API Client", func() {
 
 			initRunConfig := api.InitiateRunConfig{
 				InitializationParameters: []api.InitializationParameter{},
-				TaskDefinitions: []api.TaskDefinition{
-					{Path: "foo", FileContents: "echo 'bar'"},
+				TaskDefinitions: []api.MintDirectoryEntry{
+					{Path: "foo", FileContents: "echo 'bar'", Permissions: 0o644, Type: "file"},
 				},
 				TargetedTaskKeys: []string{},
 				UseCache:         false,
@@ -191,7 +191,7 @@ var _ = Describe("API Client", func() {
 		It("makes the request", func() {
 			body := api.SetSecretsInVaultConfig{
 				VaultName: "default",
-				Secrets: []api.Secret{{Name: "ABC", Secret: "123"}},
+				Secrets:   []api.Secret{{Name: "ABC", Secret: "123"}},
 			}
 			bodyBytes, _ := json.Marshal(body)
 
