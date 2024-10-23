@@ -117,6 +117,16 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 
 			return nil, err
 		}
+
+		mintDirInfo, err := os.Stat(mintDirectoryPath)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to read the .mint directory at %q", mintDirectoryPath)
+		}
+
+		if !mintDirInfo.IsDir() {
+			return nil, fmt.Errorf("The .mint directory at %q is not a directory", mintDirectoryPath)
+		}
+
 		mintDirectory = mintDirectoryEntries
 	}
 

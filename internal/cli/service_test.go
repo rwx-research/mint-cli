@@ -402,6 +402,35 @@ var _ = Describe("CLI Service", func() {
 				})
 			})
 
+			Context("when the 'directory' is actually a file", func() {
+				BeforeEach(func() {
+					var err error
+
+					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
+					err = os.MkdirAll(workingDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.Chdir(workingDir)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte("yaml contents"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					mintDir := filepath.Join(workingDir, ".mint")
+					err = os.WriteFile(mintDir, []byte("actually a file"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					runConfig.MintFilePath = "mint.yml"
+					runConfig.MintDirectory = mintDir
+				})
+
+				It("emits an error", func() {
+					_, err := service.InitiateRun(runConfig)
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("is not a directory"))
+				})
+			})
+
 			Context("when the directory is not found", func() {
 				var originalSpecifiedFileContent string
 
