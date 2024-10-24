@@ -7,7 +7,7 @@ on:
 
 tasks:
   - key: update
-    call: mint/update-leaves-github 1.0.5
+    call: mint/update-leaves-github 1.0.6
     with:
       repository: https://github.com/rwx-research/mint-cli.git
       ref: ${{ init.sha }}
