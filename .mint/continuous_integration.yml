@@ -13,7 +13,7 @@ concurrency-pools:
 
 tasks:
   - key: code
-    call: mint/git-clone 1.2.8
+    call: mint/git-clone 1.4.0
     with:
       preserve-git-dir: true
       repository: https://github.com/rwx-research/mint-cli.git
@@ -74,7 +74,7 @@ tasks:
       git diff --exit-code
 
   - key: mint-testing-code
-    call: mint/git-clone 1.2.8
+    call: mint/git-clone 1.4.0
     with:
       path: ./mint-testing
       repository: https://github.com/rwx-research/mint-testing.git
