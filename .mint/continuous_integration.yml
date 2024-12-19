@@ -27,7 +27,7 @@ tasks:
       - .tool-versions
 
   - key: go
-    call: mint/install-go 1.0.7
+    call: 07b10a0ca6e2962798a6a904015a6723586cc38636bb258332b1175e0318fdb9
     with:
       go-version: ${{ tasks.tool-versions.values.golang }}
 
