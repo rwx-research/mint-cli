@@ -1,6 +1,7 @@
 module github.com/rwx-research/mint-cli
 
-go 1.22
+go 1.22.0
+
 toolchain go1.23.0
 
 require (
