@@ -122,45 +122,69 @@ tasks:
       sudo apt-get install zip
       sudo apt-get clean
 
+  - key: musl
+    run: |
+      sudo apt-get update
+      sudo apt-get install musl-dev musl-tools
+      sudo apt-get clean
+
   - key: build-and-upload-binaries
-    use: [gh-cli, codesigning, zip, code, go-deps]
+    use: [gh-cli, codesigning, zip, musl, code, go-deps]
     after: [draft-full-version-release, extract-version-details]
     parallel:
-      key: build-and-upload-${{ parallel.os }}-${{ parallel.arch }}-binaries
+      key: build-and-upload-${{ parallel.os }}-${{ parallel.arch }}-${{ parallel.link }}-binaries
       values:
         - os: linux
           arch: amd64
           new-arch: x86_64
           test-binary: true
+          link: dynamic
+        - os: linux
+          arch: amd64
+          new-arch: x86_64-static
+          test-binary: false
+          link: static
         - os: linux
           arch: arm64
           new-arch: aarch64
           test-binary: false
+          link: dynamic
         - os: darwin
           arch: amd64
           new-arch: x86_64
           test-binary: false
+          link: dynamic
         - os: darwin
           arch: arm64
           new-arch: aarch64
           test-binary: false
+          link: dynamic
         - os: windows
           arch: amd64
           new-arch: x86_64
           test-binary: false
+          link: dynamic
         - os: windows
           arch: arm64
           new-arch: aarch64
           test-binary: false
+          link: dynamic
     run: |
       extension=""
       if [[ "${{ parallel.os }}" == "windows" ]]; then
         extension=".exe"
       fi
 
+      ldflags="-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ init.version }}"
+
+      if [[ "${{ parallel.link }}" == "static" ]]; then
+        export CC=musl-gcc
+        ldflags="${ldflags} -linkmode external -extldflags=-static"
+      fi
+
       GOOS=${{ parallel.os }} \
       GOARCH=${{ parallel.arch }} \
-      go build -ldflags "-w -s -X github.com/rwx-research/mint-cli/cmd/mint/config.Version=${{ tasks.extract-version-details.values.full-version }}" -a ./cmd/mint
+      go build -ldflags "${ldflags}" -a ./cmd/mint
 
       if [[ ${{ parallel.os }} == "darwin" ]]; then
         echo "$RWX_APPLE_DEVELOPER_ID_APPLICATION_CERT" > rwx-developer-id-application-cert.pem
