@@ -36,10 +36,11 @@ var _ = Describe("API Client", func() {
 					Status:     "201 Created",
 					StatusCode: 201,
 					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+					Header:     http.Header{"X-Mint-Cli-Latest-Version": []string{"1.2.3"}},
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			initRunConfig := api.InitiateRunConfig{
 				InitializationParameters: []api.InitializationParameter{},
@@ -53,6 +54,7 @@ var _ = Describe("API Client", func() {
 			result, err := c.InitiateRun(initRunConfig)
 			Expect(err).To(BeNil())
 			Expect(result.RunId).To(Equal("123"))
+			Expect(c.LatestVersionNumber()).To(Equal("1.2.3"))
 		})
 
 		It("prefixes the endpoint with the base path and parses snakecase responses", func() {
@@ -78,7 +80,7 @@ var _ = Describe("API Client", func() {
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			initRunConfig := api.InitiateRunConfig{
 				InitializationParameters: []api.InitializationParameter{},
@@ -115,7 +117,7 @@ var _ = Describe("API Client", func() {
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			obtainAuthCodeConfig := api.ObtainAuthCodeConfig{
 				Code: api.ObtainAuthCodeCode{
@@ -150,7 +152,7 @@ var _ = Describe("API Client", func() {
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			_, err := c.AcquireToken("https://cloud.rwx.com/api/auth/codes/some-uuid/token")
 			Expect(err).To(BeNil())
@@ -177,13 +179,15 @@ var _ = Describe("API Client", func() {
 					Status:     "200 OK",
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+					Header:     http.Header{"X-Mint-Cli-Latest-Version": []string{"1.2.3"}},
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			_, err := c.Whoami()
 			Expect(err).To(BeNil())
+			Expect(c.LatestVersionNumber()).To(Equal("1.2.3"))
 		})
 	})
 
@@ -201,13 +205,15 @@ var _ = Describe("API Client", func() {
 					Status:     "200 OK",
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+					Header:     http.Header{"X-Mint-Cli-Latest-Version": []string{"1.2.3"}},
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			_, err := c.SetSecretsInVault(body)
 			Expect(err).To(BeNil())
+			Expect(c.LatestVersionNumber()).To(Equal("1.2.3"))
 		})
 	})
 })

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/rwx-research/mint-cli/cmd/mint/config"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
@@ -17,12 +18,34 @@ import (
 
 // Client is an API Client for Mint
 type Client struct {
-	RoundTrip func(*http.Request) (*http.Response, error)
+	http.RoundTripper
+	latestVersion      string
+	latestVersionMutex sync.RWMutex
 }
 
-func NewClient(cfg Config) (Client, error) {
+type RoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+type versionInterceptor struct {
+	rt    http.RoundTripper
+	apply func(*http.Response)
+}
+
+func (i versionInterceptor) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := i.rt.RoundTrip(r)
+	if err == nil {
+		i.apply(resp)
+	}
+
+	return resp, err
+}
+
+func NewClient(cfg Config) (*Client, error) {
 	if err := cfg.Validate(); err != nil {
-		return Client{}, errors.Wrap(err, "validation failed")
+		return &Client{}, errors.Wrap(err, "validation failed")
 	}
 
 	roundTrip := func(req *http.Request) (*http.Response, error) {
@@ -45,10 +68,24 @@ func NewClient(cfg Config) (Client, error) {
 		return http.DefaultClient.Do(req)
 	}
 
-	return Client{roundTrip}, nil
+	return NewClientWithRoundTrip(roundTrip), nil
 }
 
-func (c Client) GetDebugConnectionInfo(debugKey string) (DebugConnectionInfo, error) {
+func NewClientWithRoundTrip(roundTrip func(*http.Request) (*http.Response, error)) *Client {
+	var c Client
+	rt := versionInterceptor{RoundTripFunc(roundTrip), func(resp *http.Response) {
+		if version := resp.Header.Get("X-Mint-Cli-Latest-Version"); version != "" {
+			c.latestVersionMutex.Lock()
+			c.latestVersion = version
+			c.latestVersionMutex.Unlock()
+		}
+	}}
+
+	c = Client{rt, "", sync.RWMutex{}}
+	return &c
+}
+
+func (c *Client) GetDebugConnectionInfo(debugKey string) (DebugConnectionInfo, error) {
 	connectionInfo := DebugConnectionInfo{}
 
 	if debugKey == "" {
@@ -96,7 +133,7 @@ func (c Client) GetDebugConnectionInfo(debugKey string) (DebugConnectionInfo, er
 }
 
 // InitiateRun sends a request to Mint for starting a new run
-func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
+func (c *Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	endpoint := "/mint/api/runs"
 
 	if err := cfg.Validate(); err != nil {
@@ -124,12 +161,7 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 201 {
-		msg := extractErrorMessage(resp.Body)
-		if msg == "" {
-			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
-		}
-
-		return nil, errors.New(msg)
+		return nil, extractErrorOrDefault(resp.Body, fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
 	}
 
 	respBody := struct {
@@ -164,7 +196,7 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	}
 }
 
-func (c Client) Lint(cfg LintConfig) (*LintResult, error) {
+func (c *Client) Lint(cfg LintConfig) (*LintResult, error) {
 	endpoint := "/mint/api/lints"
 
 	if err := cfg.Validate(); err != nil {
@@ -192,12 +224,7 @@ func (c Client) Lint(cfg LintConfig) (*LintResult, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		msg := extractErrorMessage(resp.Body)
-		if msg == "" {
-			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
-		}
-
-		return nil, errors.New(msg)
+		return nil, extractErrorOrDefault(resp.Body, fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
 	}
 
 	lintResult := LintResult{}
@@ -209,7 +236,7 @@ func (c Client) Lint(cfg LintConfig) (*LintResult, error) {
 }
 
 // ObtainAuthCode requests a new one-time-use code to login on a device
-func (c Client) ObtainAuthCode(cfg ObtainAuthCodeConfig) (*ObtainAuthCodeResult, error) {
+func (c *Client) ObtainAuthCode(cfg ObtainAuthCodeConfig) (*ObtainAuthCodeResult, error) {
 	endpoint := "/api/auth/codes"
 
 	if err := cfg.Validate(); err != nil {
@@ -247,7 +274,7 @@ func (c Client) ObtainAuthCode(cfg ObtainAuthCodeConfig) (*ObtainAuthCodeResult,
 }
 
 // AcquireToken consumes the one-time-use code once authorized
-func (c Client) AcquireToken(tokenUrl string) (*AcquireTokenResult, error) {
+func (c *Client) AcquireToken(tokenUrl string) (*AcquireTokenResult, error) {
 	req, err := http.NewRequest(http.MethodGet, tokenUrl, bytes.NewBuffer(make([]byte, 0)))
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create new HTTP request")
@@ -273,7 +300,7 @@ func (c Client) AcquireToken(tokenUrl string) (*AcquireTokenResult, error) {
 }
 
 // Whoami provides details about the authenticated token
-func (c Client) Whoami() (*WhoamiResult, error) {
+func (c *Client) Whoami() (*WhoamiResult, error) {
 	endpoint := "/api/auth/whoami"
 
 	req, err := http.NewRequest(http.MethodGet, endpoint, bytes.NewBuffer([]byte{}))
@@ -301,7 +328,7 @@ func (c Client) Whoami() (*WhoamiResult, error) {
 	return &respBody, nil
 }
 
-func (c Client) SetSecretsInVault(cfg SetSecretsInVaultConfig) (*SetSecretsInVaultResult, error) {
+func (c *Client) SetSecretsInVault(cfg SetSecretsInVaultConfig) (*SetSecretsInVaultResult, error) {
 	endpoint := "/mint/api/vaults/secrets"
 
 	encodedBody, err := json.Marshal(cfg)
@@ -323,12 +350,7 @@ func (c Client) SetSecretsInVault(cfg SetSecretsInVaultConfig) (*SetSecretsInVau
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		msg := extractErrorMessage(resp.Body)
-		if msg == "" {
-			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
-		}
-
-		return nil, errors.New(msg)
+		return nil, extractErrorOrDefault(resp.Body, fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
 	}
 
 	respBody := SetSecretsInVaultResult{}
@@ -339,7 +361,7 @@ func (c Client) SetSecretsInVault(cfg SetSecretsInVaultConfig) (*SetSecretsInVau
 	return &respBody, nil
 }
 
-func (c Client) GetLeafVersions() (*LeafVersionsResult, error) {
+func (c *Client) GetLeafVersions() (*LeafVersionsResult, error) {
 	endpoint := "/mint/api/leaves"
 
 	req, err := http.NewRequest(http.MethodGet, endpoint, bytes.NewBuffer([]byte{}))
@@ -354,11 +376,7 @@ func (c Client) GetLeafVersions() (*LeafVersionsResult, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		msg := extractErrorMessage(resp.Body)
-		if msg == "" {
-			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
-		}
-		return nil, errors.New(msg)
+		return nil, extractErrorOrDefault(resp.Body, fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
 	}
 
 	respBody := LeafVersionsResult{}
@@ -369,27 +387,30 @@ func (c Client) GetLeafVersions() (*LeafVersionsResult, error) {
 	return &respBody, nil
 }
 
-type ErrorMessage struct {
-	Message    string       				 `json:"message"`
-	StackTrace []messages.StackEntry `json:"stack_trace,omitempty"`
-	Frame      string       			 	 `json:"frame"`
-	Advice     string       				 `json:"advice"`
+func (c *Client) LatestVersionNumber() string {
+	c.latestVersionMutex.RLock()
+	v := c.latestVersion
+	c.latestVersionMutex.RUnlock()
+	return v
 }
 
-// extractErrorMessage is a small helper function for parsing an API error message
-func extractErrorMessage(reader io.Reader) string {
-	errorStruct := struct {
-		Error 				string 				 `json:"error,omitempty"`
-		ErrorMessages []ErrorMessage `json:"error_messages,omitempty"`
-	}{}
+type ErrorMessage struct {
+	Message    string                `json:"message"`
+	StackTrace []messages.StackEntry `json:"stack_trace,omitempty"`
+	Frame      string                `json:"frame"`
+	Advice     string                `json:"advice"`
+}
 
-	if err := json.NewDecoder(reader).Decode(&errorStruct); err != nil {
-		return ""
-	}
+type ApiError struct {
+	ProvidedError string         `json:"error,omitempty"`
+	ErrorCode     string         `json:"error_code,omitempty"`
+	ErrorMessages []ErrorMessage `json:"error_messages,omitempty"`
+}
 
-	if len(errorStruct.ErrorMessages) > 0 {
+func (e ApiError) Error() string {
+	if len(e.ErrorMessages) > 0 {
 		var message strings.Builder
-		for _, errorMessage := range errorStruct.ErrorMessages {
+		for _, errorMessage := range e.ErrorMessages {
 			message.WriteString("\n\n")
 			message.WriteString(messages.FormatUserMessage(errorMessage.Message, errorMessage.Frame, errorMessage.StackTrace, errorMessage.Advice))
 		}
@@ -397,11 +418,25 @@ func extractErrorMessage(reader io.Reader) string {
 		return message.String()
 	}
 
-	// Fallback to Error field
-	if errorStruct.Error != "" {
-		return errorStruct.Error
+	// Fallback to ProvidedError field
+	if e.ProvidedError != "" {
+		return e.ProvidedError
 	}
 
 	// Fallback to an empty string
 	return ""
+}
+
+func extractError(reader io.Reader) (ApiError, error) {
+	apiError := ApiError{}
+	err := json.NewDecoder(reader).Decode(&apiError)
+	return apiError, err
+}
+
+func extractErrorOrDefault(reader io.Reader, def string) ApiError {
+	apiError, err := extractError(reader)
+	if err != nil || apiError.ProvidedError == "" {
+		return ApiError{ProvidedError: def}
+	}
+	return apiError
 }
