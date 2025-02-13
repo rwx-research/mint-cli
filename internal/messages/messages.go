@@ -15,20 +15,20 @@ type StackEntry struct {
 func FormatUserMessage(message string, frame string, stackTrace []StackEntry, advice string) string {
 	var builder strings.Builder
 
-	if (message != "") {
+	if message != "" {
 		builder.WriteString(message)
 	}
 
-	if (frame != "") {
+	if frame != "" {
 		builder.WriteString("\n")
 		builder.WriteString(frame)
 	}
 
-	if (len(stackTrace) > 0) {
+	if len(stackTrace) > 0 {
 		for i := len(stackTrace) - 1; i >= 0; i-- {
 			stackEntry := stackTrace[i]
 			builder.WriteString("\n")
-			if (stackEntry.Name != "") {
+			if stackEntry.Name != "" {
 				builder.WriteString(fmt.Sprintf("  at %s (%s:%d:%d)", stackEntry.Name, stackEntry.FileName, stackEntry.Line, stackEntry.Column))
 			} else {
 				builder.WriteString(fmt.Sprintf("  at %s:%d:%d", stackEntry.FileName, stackEntry.Line, stackEntry.Column))
@@ -36,7 +36,7 @@ func FormatUserMessage(message string, frame string, stackTrace []StackEntry, ad
 		}
 	}
 
-	if (advice != "") {
+	if advice != "" {
 		builder.WriteString("\n")
 		builder.WriteString(advice)
 	}
