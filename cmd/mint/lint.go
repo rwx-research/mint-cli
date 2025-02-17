@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"os"
 	"slices"
 
 	"github.com/rwx-research/mint-cli/internal/api"
@@ -31,7 +30,6 @@ var (
 			lintConfig, err := cli.NewLintConfig(
 				targetedFiles,
 				LintMintDirectory,
-				os.Stdout,
 				LintOutputFormat,
 			)
 			if err != nil {

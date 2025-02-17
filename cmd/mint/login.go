@@ -50,7 +50,6 @@ var (
 				cli.LoginConfig{
 					DeviceName:         DeviceName,
 					AccessTokenBackend: accessTokenBackend,
-					Stdout:             os.Stdout,
 					OpenUrl:            openUrl,
 				},
 			)

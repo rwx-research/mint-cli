@@ -1,6 +1,8 @@
 package versions
 
 import (
+	"os"
+	"strings"
 	"sync"
 
 	semver "github.com/Masterminds/semver/v3"
@@ -55,4 +57,13 @@ func NewVersionAvailable() bool {
 	latestVersion := GetCliLatestVersion()
 
 	return latestVersion.GreaterThan(currentVersion)
+}
+
+func InstalledWithHomebrew() bool {
+	fname, err := os.Executable()
+	if err != nil {
+		return false
+	}
+
+	return strings.Contains(strings.ToLower(fname), "/homebrew/")
 }

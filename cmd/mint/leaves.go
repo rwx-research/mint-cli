@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/spf13/cobra"
 )
@@ -27,8 +25,6 @@ var (
 				Files:                    args,
 				DefaultDir:               ".mint",
 				ReplacementVersionPicker: replacementVersionPicker,
-				Stdout:                   os.Stdout,
-				Stderr:                   os.Stderr,
 			})
 		},
 		Short: "Update all leaves to their latest (minor) version",

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/spf13/cobra"
 )
@@ -30,7 +28,6 @@ var (
 				Vault:   Vault,
 				File:    File,
 				Secrets: secrets,
-				Stdout:  os.Stdout,
 			})
 		},
 		Short: "Set secrets in a vault",

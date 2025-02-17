@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/rwx-research/mint-cli/internal/cli"
 
 	"github.com/spf13/cobra"
@@ -16,7 +14,7 @@ var (
 			return requireAccessToken()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := service.Whoami(cli.WhoamiConfig{Json: WhoamiJson, Stdout: os.Stdout})
+			err := service.Whoami(cli.WhoamiConfig{Json: WhoamiJson})
 			if err != nil {
 				return err
 			}
