@@ -142,7 +142,7 @@ tasks:
         - os: linux
           arch: amd64
           new-arch: x86_64-static
-          test-binary: false
+          test-binary: true
           link: static
         - os: linux
           arch: arm64

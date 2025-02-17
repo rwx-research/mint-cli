@@ -18,16 +18,14 @@ type lockedVersions struct {
 }
 
 func init() {
-	currentVersionStr := config.Version
-	if currentVersionStr == "" {
-		currentVersionStr = "0.0.0"
-	} else if strings.HasPrefix(currentVersionStr, "git-") || strings.HasPrefix(currentVersionStr, "testing-") {
-		// This is a development build, assume it is newer than any release.
-		currentVersionStr = "9999+" + currentVersionStr
+	currentVersion, err := semver.NewVersion(config.Version)
+	if err != nil {
+		// Assume this is a development build and it is newer than any release.
+		currentVersion = semver.MustParse("9999+" + config.Version)
 	}
 
 	versionHolder = &lockedVersions{
-		currentVersion: semver.MustParse(currentVersionStr),
+		currentVersion: currentVersion,
 		latestVersion:  semver.MustParse("0.0.0"),
 	}
 }
