@@ -13,11 +13,18 @@ import (
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/messages"
+	"github.com/rwx-research/mint-cli/internal/versions"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (rtf roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return rtf(r)
+}
 
 // Client is an API Client for Mint
 type Client struct {
-	RoundTrip func(*http.Request) (*http.Response, error)
+	http.RoundTripper
 }
 
 func NewClient(cfg Config) (Client, error) {
@@ -45,7 +52,12 @@ func NewClient(cfg Config) (Client, error) {
 		return http.DefaultClient.Do(req)
 	}
 
-	return Client{roundTrip}, nil
+	return NewClientWithRoundTrip(roundTrip), nil
+}
+
+func NewClientWithRoundTrip(rt func(*http.Request) (*http.Response, error)) Client {
+	roundTripper := versions.NewRoundTripper(roundTripFunc(rt))
+	return Client{roundTripper}
 }
 
 func (c Client) GetDebugConnectionInfo(debugKey string) (DebugConnectionInfo, error) {
@@ -370,16 +382,16 @@ func (c Client) GetLeafVersions() (*LeafVersionsResult, error) {
 }
 
 type ErrorMessage struct {
-	Message    string       				 `json:"message"`
+	Message    string                `json:"message"`
 	StackTrace []messages.StackEntry `json:"stack_trace,omitempty"`
-	Frame      string       			 	 `json:"frame"`
-	Advice     string       				 `json:"advice"`
+	Frame      string                `json:"frame"`
+	Advice     string                `json:"advice"`
 }
 
 // extractErrorMessage is a small helper function for parsing an API error message
 func extractErrorMessage(reader io.Reader) string {
 	errorStruct := struct {
-		Error 				string 				 `json:"error,omitempty"`
+		Error         string         `json:"error,omitempty"`
 		ErrorMessages []ErrorMessage `json:"error_messages,omitempty"`
 	}{}
 

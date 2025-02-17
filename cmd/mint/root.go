@@ -41,7 +41,7 @@ var (
 				return errors.Wrap(err, "unable to initialize API client")
 			}
 
-			service, err = cli.NewService(cli.Config{APIClient: c, SSHClient: new(ssh.Client)})
+			service, err = cli.NewService(cli.Config{APIClient: c, SSHClient: new(ssh.Client), Stdout: os.Stdout, Stderr: os.Stderr})
 			if err != nil {
 				return errors.Wrap(err, "unable to initialize CLI")
 			}

@@ -5,6 +5,7 @@ go 1.22.0
 toolchain go1.23.6
 
 require (
+	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/briandowns/spinner v1.23.2
 	github.com/kopoli/go-terminal-size v0.0.0-20170219200355-5c97524c8b54
 	github.com/magefile/mage v1.15.0

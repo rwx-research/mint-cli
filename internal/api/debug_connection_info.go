@@ -7,5 +7,5 @@ type DebugConnectionInfo struct {
 }
 
 type DebugConnectionInfoError struct {
-	Error         string
+	Error string
 }

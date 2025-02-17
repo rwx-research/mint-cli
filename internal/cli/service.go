@@ -18,6 +18,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/fs"
 	"github.com/rwx-research/mint-cli/internal/messages"
+	"github.com/rwx-research/mint-cli/internal/versions"
 
 	"github.com/briandowns/spinner"
 	"golang.org/x/crypto/ssh"
@@ -153,6 +154,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		Title:                    cfg.Title,
 		UseCache:                 !cfg.NoCache,
 	})
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to initiate run")
 	}
@@ -253,15 +255,16 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 		TaskDefinitions: taskDefinitions,
 		TargetPaths:     targetPaths,
 	})
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to lint files")
 	}
 
 	switch cfg.OutputFormat {
 	case LintOutputOneLine:
-		err = outputLintOneLine(cfg.Output, lintResult.Problems)
+		err = outputLintOneLine(s.Stdout, lintResult.Problems)
 	case LintOutputMultiLine:
-		err = outputLintMultiLine(cfg.Output, lintResult.Problems, len(targetPaths))
+		err = outputLintMultiLine(s.Stdout, lintResult.Problems, len(targetPaths))
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to output lint results")
@@ -347,45 +350,50 @@ func (s Service) Login(cfg LoginConfig) error {
 	// we print a nice message to handle the case where opening the browser fails, so we ignore this error
 	cfg.OpenUrl(authCodeResult.AuthorizationUrl) //nolint:errcheck
 
-	fmt.Fprintln(cfg.Stdout)
-	fmt.Fprintln(cfg.Stdout, "To authorize this device, you'll need to login to RWX Cloud and choose an organization.")
-	fmt.Fprintln(cfg.Stdout, "Your browser should automatically open. If it does not, you can visit this URL:")
-	fmt.Fprintln(cfg.Stdout)
-	fmt.Fprintf(cfg.Stdout, "\t%v\n", authCodeResult.AuthorizationUrl)
-	fmt.Fprintln(cfg.Stdout)
-	fmt.Fprintln(cfg.Stdout, "Once authorized, a personal access token will be generated and stored securely on this device.")
-	fmt.Fprintln(cfg.Stdout)
+	fmt.Fprintln(s.Stdout)
+	fmt.Fprintln(s.Stdout, "To authorize this device, you'll need to login to RWX Cloud and choose an organization.")
+	fmt.Fprintln(s.Stdout, "Your browser should automatically open. If it does not, you can visit this URL:")
+	fmt.Fprintln(s.Stdout)
+	fmt.Fprintf(s.Stdout, "\t%v\n", authCodeResult.AuthorizationUrl)
+	fmt.Fprintln(s.Stdout)
+	fmt.Fprintln(s.Stdout, "Once authorized, a personal access token will be generated and stored securely on this device.")
+	fmt.Fprintln(s.Stdout)
 
-	indicator := spinner.New(spinner.CharSets[11], 100*time.Millisecond, spinner.WithWriter(cfg.Stdout))
+	indicator := spinner.New(spinner.CharSets[11], 100*time.Millisecond, spinner.WithWriter(s.Stdout))
 	indicator.Suffix = " Waiting for authorization..."
 	indicator.Start()
+
+	stop := func() {
+		indicator.Stop()
+		s.outputLatestVersionMessage()
+	}
 
 	for {
 		tokenResult, err := s.APIClient.AcquireToken(authCodeResult.TokenUrl)
 		if err != nil {
-			indicator.Stop()
+			stop()
 			return errors.Wrap(err, "unable to acquire the token")
 		}
 
 		switch tokenResult.State {
 		case "consumed":
-			indicator.Stop()
+			stop()
 			return errors.New("The code has already been used. Try again.")
 		case "expired":
-			indicator.Stop()
+			stop()
 			return errors.New("The code has expired. Try again.")
 		case "authorized":
-			indicator.Stop()
+			stop()
 			if tokenResult.Token == "" {
 				return errors.New("The code has been authorized, but there is no token. You can try again, but this is likely an issue with RWX Cloud. Please reach out at support@rwx.com.")
 			} else {
-				fmt.Fprint(cfg.Stdout, "Authorized!\n")
+				fmt.Fprint(s.Stdout, "Authorized!\n")
 				return accesstoken.Set(cfg.AccessTokenBackend, tokenResult.Token)
 			}
 		case "pending":
 			time.Sleep(1 * time.Second)
 		default:
-			indicator.Stop()
+			stop()
 			return errors.New("The code is in an unexpected state. You can try again, but this is likely an issue with RWX Cloud. Please reach out at support@rwx.com.")
 		}
 	}
@@ -393,6 +401,7 @@ func (s Service) Login(cfg LoginConfig) error {
 
 func (s Service) Whoami(cfg WhoamiConfig) error {
 	result, err := s.APIClient.Whoami()
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return errors.Wrap(err, "unable to determine details about the access token")
 	}
@@ -403,12 +412,12 @@ func (s Service) Whoami(cfg WhoamiConfig) error {
 			return errors.Wrap(err, "unable to JSON encode the result")
 		}
 
-		fmt.Fprint(cfg.Stdout, string(encoded))
+		fmt.Fprint(s.Stdout, string(encoded))
 	} else {
-		fmt.Fprintf(cfg.Stdout, "Token Kind: %v\n", strings.ReplaceAll(result.TokenKind, "_", " "))
-		fmt.Fprintf(cfg.Stdout, "Organization: %v\n", result.OrganizationSlug)
+		fmt.Fprintf(s.Stdout, "Token Kind: %v\n", strings.ReplaceAll(result.TokenKind, "_", " "))
+		fmt.Fprintf(s.Stdout, "Organization: %v\n", result.OrganizationSlug)
 		if result.UserEmail != nil {
-			fmt.Fprintf(cfg.Stdout, "User: %v\n", *result.UserEmail)
+			fmt.Fprintf(s.Stdout, "User: %v\n", *result.UserEmail)
 		}
 	}
 
@@ -463,10 +472,11 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 		VaultName: cfg.Vault,
 		Secrets:   secrets,
 	})
+	s.outputLatestVersionMessage()
 
 	if result != nil && len(result.SetSecrets) > 0 {
-		fmt.Fprintln(cfg.Stdout)
-		fmt.Fprintf(cfg.Stdout, "Successfully set the following secrets: %s", strings.Join(result.SetSecrets, ", "))
+		fmt.Fprintln(s.Stdout)
+		fmt.Fprintf(s.Stdout, "Successfully set the following secrets: %s", strings.Join(result.SetSecrets, ", "))
 	}
 
 	if err != nil {
@@ -510,6 +520,7 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	}
 
 	leafVersions, err := s.APIClient.GetLeafVersions()
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return errors.Wrap(err, "unable to fetch leaf versions")
 	}
@@ -519,7 +530,7 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 		for majorVersion, references := range majorVersions {
 			targetLeafVersion, err := cfg.ReplacementVersionPicker(*leafVersions, leaf, majorVersion)
 			if err != nil {
-				fmt.Fprintln(cfg.Stderr, err.Error())
+				fmt.Fprintln(s.Stderr, err.Error())
 				continue
 			}
 
@@ -538,15 +549,15 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	}
 
 	if len(replacements) == 0 {
-		fmt.Fprintln(cfg.Stdout, "No leaves to update.")
+		fmt.Fprintln(s.Stdout, "No leaves to update.")
 	} else {
-		fmt.Fprintln(cfg.Stdout, "Updated the following leaves:")
+		fmt.Fprintln(s.Stdout, "Updated the following leaves:")
 		for original, replacement := range replacements {
 			replacementParts := strings.Split(replacement, " ")
 			if len(replacementParts) == 2 {
-				fmt.Fprintf(cfg.Stdout, "\t%s → %s\n", original, replacementParts[1])
+				fmt.Fprintf(s.Stdout, "\t%s → %s\n", original, replacementParts[1])
 			} else {
-				fmt.Fprintf(cfg.Stdout, "\t%s → %s\n", original, replacement)
+				fmt.Fprintf(s.Stdout, "\t%s → %s\n", original, replacement)
 			}
 		}
 	}
@@ -817,6 +828,28 @@ func (s Service) findMintDirectoryPath(configuredDirectory string) (string, erro
 		parentDir, _ := filepath.Split(workingDirectory)
 		workingDirectory = filepath.Clean(parentDir)
 	}
+}
+
+func (s Service) outputLatestVersionMessage() {
+	showLatestVersion := os.Getenv("MINT_HIDE_LATEST_VERSION") == ""
+
+	if !showLatestVersion || !versions.NewVersionAvailable() {
+		return
+	}
+
+	w := s.Stderr
+	fmt.Fprintln(w, "========================================")
+	fmt.Fprintln(w, "A new version of Mint is available!")
+	fmt.Fprintf(w, "You are currently on version %s\n", versions.GetCliCurrentVersion())
+	fmt.Fprintf(w, "The latest version is %s\n", versions.GetCliLatestVersion())
+
+	if versions.InstalledWithHomebrew() {
+		fmt.Fprintln(w, "\nYou can update to the latest version with:")
+		fmt.Fprintln(w, "    brew upgrade rwx-research/tap/mint")
+	}
+
+	fmt.Fprintln(w, "========================================")
+	fmt.Fprintln(w)
 }
 
 func PickLatestMajorVersion(versions api.LeafVersionsResult, leaf string, _ string) (string, error) {

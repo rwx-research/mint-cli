@@ -12,6 +12,7 @@ import (
 	"net/url"
 
 	"github.com/rwx-research/mint-cli/internal/api"
+	"github.com/rwx-research/mint-cli/internal/versions"
 )
 
 var _ = Describe("API Client", func() {
@@ -36,10 +37,11 @@ var _ = Describe("API Client", func() {
 					Status:     "201 Created",
 					StatusCode: 201,
 					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+					Header:     http.Header{"X-Mint-Cli-Latest-Version": []string{"1000000.0.0"}},
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			initRunConfig := api.InitiateRunConfig{
 				InitializationParameters: []api.InitializationParameter{},
@@ -53,6 +55,10 @@ var _ = Describe("API Client", func() {
 			result, err := c.InitiateRun(initRunConfig)
 			Expect(err).To(BeNil())
 			Expect(result.RunId).To(Equal("123"))
+
+			// This works as long as this is the only test we're setting the latest version header.
+			Expect(versions.GetCliLatestVersion().String()).To(Equal("1000000.0.0"))
+			Expect(versions.NewVersionAvailable()).To(BeTrue())
 		})
 
 		It("prefixes the endpoint with the base path and parses snakecase responses", func() {
@@ -78,7 +84,7 @@ var _ = Describe("API Client", func() {
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			initRunConfig := api.InitiateRunConfig{
 				InitializationParameters: []api.InitializationParameter{},
@@ -115,7 +121,7 @@ var _ = Describe("API Client", func() {
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			obtainAuthCodeConfig := api.ObtainAuthCodeConfig{
 				Code: api.ObtainAuthCodeCode{
@@ -150,7 +156,7 @@ var _ = Describe("API Client", func() {
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			_, err := c.AcquireToken("https://cloud.rwx.com/api/auth/codes/some-uuid/token")
 			Expect(err).To(BeNil())
@@ -180,7 +186,7 @@ var _ = Describe("API Client", func() {
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			_, err := c.Whoami()
 			Expect(err).To(BeNil())
@@ -204,7 +210,7 @@ var _ = Describe("API Client", func() {
 				}, nil
 			}
 
-			c := api.Client{roundTrip}
+			c := api.NewClientWithRoundTrip(roundTrip)
 
 			_, err := c.SetSecretsInVault(body)
 			Expect(err).To(BeNil())

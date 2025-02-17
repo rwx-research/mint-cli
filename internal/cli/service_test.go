@@ -1,8 +1,6 @@
 package cli_test
 
 import (
-	"bytes"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -30,6 +28,8 @@ var _ = Describe("CLI Service", func() {
 		service    cli.Service
 		mockAPI    *mocks.API
 		mockSSH    *mocks.SSH
+		mockStdout *strings.Builder
+		mockStderr *strings.Builder
 		tmp        string
 		originalWd string
 	)
@@ -48,9 +48,14 @@ var _ = Describe("CLI Service", func() {
 		mockAPI = new(mocks.API)
 		mockSSH = new(mocks.SSH)
 
+		mockStdout = &strings.Builder{}
+		mockStderr = &strings.Builder{}
+
 		config = cli.Config{
 			APIClient: mockAPI,
 			SSHClient: mockSSH,
+			Stdout:    mockStdout,
+			Stderr:    mockStderr,
 		}
 	})
 
@@ -547,15 +552,12 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 	Describe("logging in", func() {
 		var (
 			tokenBackend accesstoken.Backend
-			stdout       strings.Builder
 		)
 
 		BeforeEach(func() {
 			var err error
 			tokenBackend, err = accesstoken.NewMemoryBackend()
 			Expect(err).NotTo(HaveOccurred())
-
-			stdout = strings.Builder{}
 		})
 
 		Context("when unable to obtain an auth code", func() {
@@ -570,7 +572,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				err := service.Login(cli.LoginConfig{
 					DeviceName:         "some-device",
 					AccessTokenBackend: tokenBackend,
-					Stdout:             &stdout,
 					OpenUrl: func(url string) error {
 						Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 						return nil
@@ -613,7 +614,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -627,7 +627,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -644,7 +643,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -652,15 +650,14 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					})
 					Expect(err).NotTo(HaveOccurred())
 
-					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
-					Expect(stdout.String()).To(ContainSubstring("Authorized!"))
+					Expect(mockStdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(mockStdout.String()).To(ContainSubstring("Authorized!"))
 				})
 
 				It("attempts to open the authorization URL, but doesn't care if it fails", func() {
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return errors.New("couldn't open it")
@@ -668,8 +665,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					})
 					Expect(err).NotTo(HaveOccurred())
 
-					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
-					Expect(stdout.String()).To(ContainSubstring("Authorized!"))
+					Expect(mockStdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(mockStdout.String()).To(ContainSubstring("Authorized!"))
 				})
 			})
 
@@ -693,7 +690,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -708,7 +704,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -725,7 +720,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -733,8 +727,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					})
 					Expect(err).To(HaveOccurred())
 
-					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
-					Expect(stdout.String()).NotTo(ContainSubstring("Authorized!"))
+					Expect(mockStdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(mockStdout.String()).NotTo(ContainSubstring("Authorized!"))
 				})
 			})
 
@@ -758,7 +752,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -773,7 +766,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -790,7 +782,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -798,8 +789,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					})
 					Expect(err).To(HaveOccurred())
 
-					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
-					Expect(stdout.String()).NotTo(ContainSubstring("Authorized!"))
+					Expect(mockStdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(mockStdout.String()).NotTo(ContainSubstring("Authorized!"))
 				})
 			})
 
@@ -823,7 +814,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -838,7 +828,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -855,7 +844,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					err := service.Login(cli.LoginConfig{
 						DeviceName:         "some-device",
 						AccessTokenBackend: tokenBackend,
-						Stdout:             &stdout,
 						OpenUrl: func(url string) error {
 							Expect(url).To(Equal("https://cloud.local/_/auth/code?code=your-code"))
 							return nil
@@ -863,22 +851,14 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					})
 					Expect(err).To(HaveOccurred())
 
-					Expect(stdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
-					Expect(stdout.String()).NotTo(ContainSubstring("Authorized!"))
+					Expect(mockStdout.String()).To(ContainSubstring("https://cloud.local/_/auth/code?code=your-code"))
+					Expect(mockStdout.String()).NotTo(ContainSubstring("Authorized!"))
 				})
 			})
 		})
 	})
 
 	Describe("whoami", func() {
-		var (
-			stdout strings.Builder
-		)
-
-		BeforeEach(func() {
-			stdout = strings.Builder{}
-		})
-
 		Context("when outputting json", func() {
 			Context("when the request fails", func() {
 				BeforeEach(func() {
@@ -889,8 +869,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("returns an error", func() {
 					err := service.Whoami(cli.WhoamiConfig{
-						Json:   true,
-						Stdout: &stdout,
+						Json: true,
 					})
 
 					Expect(err).To(HaveOccurred())
@@ -913,14 +892,13 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("writes the token kind, organization, and user", func() {
 					err := service.Whoami(cli.WhoamiConfig{
-						Json:   true,
-						Stdout: &stdout,
+						Json: true,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(ContainSubstring(`"token_kind": "personal_access_token"`))
-					Expect(stdout.String()).To(ContainSubstring(`"organization_slug": "rwx"`))
-					Expect(stdout.String()).To(ContainSubstring(`"user_email": "someone@rwx.com"`))
+					Expect(mockStdout.String()).To(ContainSubstring(`"token_kind": "personal_access_token"`))
+					Expect(mockStdout.String()).To(ContainSubstring(`"organization_slug": "rwx"`))
+					Expect(mockStdout.String()).To(ContainSubstring(`"user_email": "someone@rwx.com"`))
 				})
 			})
 
@@ -936,14 +914,13 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("writes the token kind and organization", func() {
 					err := service.Whoami(cli.WhoamiConfig{
-						Json:   true,
-						Stdout: &stdout,
+						Json: true,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(ContainSubstring(`"token_kind": "organization_access_token"`))
-					Expect(stdout.String()).To(ContainSubstring(`"organization_slug": "rwx"`))
-					Expect(stdout.String()).NotTo(ContainSubstring(`"user_email"`))
+					Expect(mockStdout.String()).To(ContainSubstring(`"token_kind": "organization_access_token"`))
+					Expect(mockStdout.String()).To(ContainSubstring(`"organization_slug": "rwx"`))
+					Expect(mockStdout.String()).NotTo(ContainSubstring(`"user_email"`))
 				})
 			})
 		})
@@ -958,8 +935,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("returns an error", func() {
 					err := service.Whoami(cli.WhoamiConfig{
-						Json:   false,
-						Stdout: &stdout,
+						Json: false,
 					})
 
 					Expect(err).To(HaveOccurred())
@@ -982,14 +958,13 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("writes the token kind, organization, and user", func() {
 					err := service.Whoami(cli.WhoamiConfig{
-						Json:   false,
-						Stdout: &stdout,
+						Json: false,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(ContainSubstring("Token Kind: personal access token"))
-					Expect(stdout.String()).To(ContainSubstring("Organization: rwx"))
-					Expect(stdout.String()).To(ContainSubstring("User: someone@rwx.com"))
+					Expect(mockStdout.String()).To(ContainSubstring("Token Kind: personal access token"))
+					Expect(mockStdout.String()).To(ContainSubstring("Organization: rwx"))
+					Expect(mockStdout.String()).To(ContainSubstring("User: someone@rwx.com"))
 				})
 			})
 
@@ -1005,29 +980,22 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("writes the token kind and organization", func() {
 					err := service.Whoami(cli.WhoamiConfig{
-						Json:   false,
-						Stdout: &stdout,
+						Json: false,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(ContainSubstring("Token Kind: organization access token"))
-					Expect(stdout.String()).To(ContainSubstring("Organization: rwx"))
-					Expect(stdout.String()).NotTo(ContainSubstring("User:"))
+					Expect(mockStdout.String()).To(ContainSubstring("Token Kind: organization access token"))
+					Expect(mockStdout.String()).To(ContainSubstring("Organization: rwx"))
+					Expect(mockStdout.String()).NotTo(ContainSubstring("User:"))
 				})
 			})
 		})
 	})
 
 	Describe("setting secrets", func() {
-		var (
-			stdout strings.Builder
-		)
-
 		BeforeEach(func() {
 			var err error
 			Expect(err).NotTo(HaveOccurred())
-
-			stdout = strings.Builder{}
 		})
 
 		Context("when unable to set secrets", func() {
@@ -1044,7 +1012,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				err := service.SetSecretsInVault(cli.SetSecretsInVaultConfig{
 					Vault:   "default",
 					Secrets: []string{"ABC=123"},
-					Stdout:  &stdout,
 				})
 
 				Expect(err).To(HaveOccurred())
@@ -1070,11 +1037,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				err := service.SetSecretsInVault(cli.SetSecretsInVaultConfig{
 					Vault:   "default",
 					Secrets: []string{"ABC=123", "DEF=\"xyz\""},
-					Stdout:  &stdout,
 				})
 
 				Expect(err).NotTo(HaveOccurred())
-				Expect(stdout.String()).To(Equal("\nSuccessfully set the following secrets: ABC, DEF"))
+				Expect(mockStdout.String()).To(Equal("\nSuccessfully set the following secrets: ABC, DEF"))
 			})
 		})
 
@@ -1112,26 +1078,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Vault:   "default",
 					Secrets: []string{},
 					File:    secretsFile,
-					Stdout:  &stdout,
 				})
 
 				Expect(err).NotTo(HaveOccurred())
-				Expect(stdout.String()).To(Equal("\nSuccessfully set the following secrets: A, B, C, D"))
+				Expect(mockStdout.String()).To(Equal("\nSuccessfully set the following secrets: A, B, C, D"))
 			})
 		})
 	})
 
 	Describe("updating leaves", func() {
-		var (
-			stdout strings.Builder
-			stderr strings.Builder
-		)
-
-		BeforeEach(func() {
-			stdout = strings.Builder{}
-			stderr = strings.Builder{}
-		})
-
 		Context("when no files provided", func() {
 			Context("when no yaml files found in the default directory", func() {
 				var mintDir string
@@ -1150,8 +1105,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("returns an error", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{},
 						DefaultDir:               mintDir,
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
@@ -1211,8 +1164,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					var err error
 
 					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{},
 						DefaultDir:               mintDir,
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
@@ -1264,8 +1215,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("returns an error", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
@@ -1291,8 +1240,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					var err error
 
 					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
@@ -1309,14 +1256,12 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates no leaves were updated", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(ContainSubstring("No leaves to update."))
+					Expect(mockStdout.String()).To(ContainSubstring("No leaves to update."))
 				})
 			})
 
@@ -1348,8 +1293,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					var err error
 
 					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
@@ -1378,17 +1321,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates leaves were updated", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(ContainSubstring("Updated the following leaves:"))
-					Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 → 1.2.3"))
-					Expect(stdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → 1.0.1"))
-					Expect(stdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → 1.0.1"))
+					Expect(mockStdout.String()).To(ContainSubstring("Updated the following leaves:"))
+					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 → 1.2.3"))
+					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → 1.0.1"))
+					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → 1.0.1"))
 				})
 			})
 
@@ -1406,8 +1347,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					var err error
 
 					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
@@ -1424,14 +1363,12 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates a leaf could not be found", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stderr.String()).To(ContainSubstring(`Unable to find the leaf "mint/setup-node"; skipping it.`))
+					Expect(mockStderr.String()).To(ContainSubstring(`Unable to find the leaf "mint/setup-node"; skipping it.`))
 				})
 			})
 
@@ -1451,8 +1388,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					var err error
 
 					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
@@ -1478,8 +1413,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				JustBeforeEach(func() {
 					Expect(service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Stdout:                   &stdout,
-						Stderr:                   &stderr,
 						Files:                    []string{filepath.Join(tmp, "foo.yaml")},
 						ReplacementVersionPicker: cli.PickLatestMinorVersion,
 					})).To(Succeed())
@@ -1506,7 +1439,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					})
 
 					It("indicates no leaves were updated", func() {
-						Expect(stdout.String()).To(ContainSubstring("No leaves to update."))
+						Expect(mockStdout.String()).To(ContainSubstring("No leaves to update."))
 					})
 				})
 
@@ -1531,8 +1464,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					})
 
 					It("indicates that a leaf was updated", func() {
-						Expect(stdout.String()).To(ContainSubstring("Updated the following leaves:"))
-						Expect(stdout.String()).To(ContainSubstring("mint/setup-node 1.0.9 → 1.1.1"))
+						Expect(mockStdout.String()).To(ContainSubstring("Updated the following leaves:"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-node 1.0.9 → 1.1.1"))
 					})
 				})
 			})
@@ -1542,7 +1475,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 	Describe("linting", func() {
 		var truncatedDiff bool
 		var lintConfig cli.LintConfig
-		var stdout bytes.Buffer
 
 		BeforeEach(func() {
 			truncatedDiff = format.TruncatedDiff
@@ -1551,8 +1483,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			Expect(os.MkdirAll(filepath.Join(tmp, "some/path/to/.mint"), 0o755)).NotTo(HaveOccurred())
 			Expect(os.Chdir(filepath.Join(tmp, "some/path/to"))).NotTo(HaveOccurred())
 
-			stdout.Reset()
-			lintConfig = cli.LintConfig{Output: io.Writer(&stdout), OutputFormat: cli.LintOutputNone}
+			lintConfig = cli.LintConfig{OutputFormat: cli.LintOutputNone}
 		})
 
 		AfterEach(func() {
@@ -1588,7 +1519,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				It("lists only files", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(`error   mint1.yml:11:22 - message 1 message 1a
+					Expect(mockStdout.String()).To(Equal(`error   mint1.yml:11:22 - message 1 message 1a
 error   mint1.yml:15:4 - message 2 message 2a
 warning mint1.yml:2:6 - message 3
 warning mint1.yml - message 4
@@ -1604,7 +1535,7 @@ warning mint1.yml - message 4
 				It("lists all the data from the problem", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(`
+					Expect(mockStdout.String()).To(Equal(`
 mint1.yml:11:22  [error]
 message 1
 message 1a
@@ -1636,7 +1567,7 @@ Checked 2 files and found 4 problems.
 				It("doesn't output", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(""))
+					Expect(mockStdout.String()).To(Equal(""))
 				})
 			})
 		})
@@ -1719,7 +1650,7 @@ Checked 2 files and found 4 problems.
 				It("lists only files", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(`error   mint1.yml:11:22 - message 1 message 1a
+					Expect(mockStdout.String()).To(Equal(`error   mint1.yml:11:22 - message 1 message 1a
 error   mint1.yml:5:22 - message 2 message 2a
 warning mint1.yml:2:6 - message 3
 warning mint1.yml:7:9 - message 4
@@ -1735,7 +1666,7 @@ warning mint1.yml:7:9 - message 4
 				It("lists all the data from the problem", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(`
+					Expect(mockStdout.String()).To(Equal(`
 [error] message 1
 message 1a
   4 |     run: echo hi
@@ -1773,7 +1704,7 @@ Checked 2 files and found 4 problems.
 				It("doesn't output", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(""))
+					Expect(mockStdout.String()).To(Equal(""))
 				})
 			})
 		})
@@ -1800,7 +1731,7 @@ Checked 2 files and found 4 problems.
 				It("doesn't output", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(""))
+					Expect(mockStdout.String()).To(Equal(""))
 				})
 			})
 
@@ -1812,7 +1743,7 @@ Checked 2 files and found 4 problems.
 				It("outputs check counts", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal("\nChecked 2 files and found 0 problems.\n"))
+					Expect(mockStdout.String()).To(Equal("\nChecked 2 files and found 0 problems.\n"))
 				})
 			})
 
@@ -1824,7 +1755,7 @@ Checked 2 files and found 4 problems.
 				It("doesn't output", func() {
 					_, err := service.Lint(lintConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(stdout.String()).To(Equal(""))
+					Expect(mockStdout.String()).To(Equal(""))
 				})
 			})
 		})

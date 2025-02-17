@@ -11,6 +11,8 @@ import (
 type Config struct {
 	APIClient APIClient
 	SSHClient SSHClient
+	Stdout    io.Writer
+	Stderr    io.Writer
 }
 
 func (c Config) Validate() error {
@@ -20,6 +22,14 @@ func (c Config) Validate() error {
 
 	if c.SSHClient == nil {
 		return errors.New("missing SSH client constructor")
+	}
+
+	if c.Stdout == nil {
+		return errors.New("missing Stdout")
+	}
+
+	if c.Stderr == nil {
+		return errors.New("missing Stderr")
 	}
 
 	return nil
@@ -66,7 +76,6 @@ const (
 type LintConfig struct {
 	MintDirectory string
 	MintFilePaths []string
-	Output        io.Writer
 	OutputFormat  LintOutputFormat
 }
 
@@ -74,7 +83,7 @@ func (c LintConfig) Validate() error {
 	return nil
 }
 
-func NewLintConfig(filePaths []string, mintDir string, output io.Writer, formatString string) (LintConfig, error) {
+func NewLintConfig(filePaths []string, mintDir string, formatString string) (LintConfig, error) {
 	var format LintOutputFormat
 
 	switch formatString {
@@ -91,7 +100,6 @@ func NewLintConfig(filePaths []string, mintDir string, output io.Writer, formatS
 	return LintConfig{
 		MintDirectory: mintDir,
 		MintFilePaths: filePaths,
-		Output:        output,
 		OutputFormat:  format,
 	}, nil
 }
@@ -99,7 +107,6 @@ func NewLintConfig(filePaths []string, mintDir string, output io.Writer, formatS
 type LoginConfig struct {
 	DeviceName         string
 	AccessTokenBackend accesstoken.Backend
-	Stdout             io.Writer
 	OpenUrl            func(url string) error
 }
 
@@ -112,8 +119,7 @@ func (c LoginConfig) Validate() error {
 }
 
 type WhoamiConfig struct {
-	Json   bool
-	Stdout io.Writer
+	Json bool
 }
 
 func (c WhoamiConfig) Validate() error {
@@ -124,7 +130,6 @@ type SetSecretsInVaultConfig struct {
 	Secrets []string
 	Vault   string
 	File    string
-	Stdout  io.Writer
 }
 
 func (c SetSecretsInVaultConfig) Validate() error {
@@ -143,8 +148,6 @@ type UpdateLeavesConfig struct {
 	DefaultDir               string
 	Files                    []string
 	ReplacementVersionPicker func(versions api.LeafVersionsResult, leaf string, major string) (string, error)
-	Stdout                   io.Writer
-	Stderr                   io.Writer
 }
 
 func (c UpdateLeavesConfig) Validate() error {
@@ -154,14 +157,6 @@ func (c UpdateLeavesConfig) Validate() error {
 
 	if c.ReplacementVersionPicker == nil {
 		return errors.New("a replacement version picker must be provided")
-	}
-
-	if c.Stdout == nil {
-		return errors.New("a stdout interface needs to be provided")
-	}
-
-	if c.Stdout == nil {
-		return errors.New("a stderr interface needs to be provided")
 	}
 
 	return nil
