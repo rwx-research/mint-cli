@@ -21,7 +21,11 @@ func init() {
 	currentVersionStr := config.Version
 	if currentVersionStr == "" {
 		currentVersionStr = "0.0.0"
+	} else if strings.HasPrefix(currentVersionStr, "git-") || strings.HasPrefix(currentVersionStr, "testing-") {
+		// This is a development build, assume it is newer than any release.
+		currentVersionStr = "9999+" + currentVersionStr
 	}
+
 	versionHolder = &lockedVersions{
 		currentVersion: semver.MustParse(currentVersionStr),
 		latestVersion:  semver.MustParse("0.0.0"),

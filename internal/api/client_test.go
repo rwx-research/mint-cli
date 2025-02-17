@@ -37,7 +37,7 @@ var _ = Describe("API Client", func() {
 					Status:     "201 Created",
 					StatusCode: 201,
 					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
-					Header:     http.Header{"X-Mint-Cli-Latest-Version": []string{"999.888.777"}},
+					Header:     http.Header{"X-Mint-Cli-Latest-Version": []string{"1000000.0.0"}},
 				}, nil
 			}
 
@@ -57,7 +57,7 @@ var _ = Describe("API Client", func() {
 			Expect(result.RunId).To(Equal("123"))
 
 			// This works as long as this is the only test we're setting the latest version header.
-			Expect(versions.GetCliLatestVersion().String()).To(Equal("999.888.777"))
+			Expect(versions.GetCliLatestVersion().String()).To(Equal("1000000.0.0"))
 			Expect(versions.NewVersionAvailable()).To(BeTrue())
 		})
 

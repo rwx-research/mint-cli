@@ -18,6 +18,7 @@ import (
 	"github.com/rwx-research/mint-cli/internal/errors"
 	"github.com/rwx-research/mint-cli/internal/fs"
 	"github.com/rwx-research/mint-cli/internal/messages"
+	"github.com/rwx-research/mint-cli/internal/versions"
 
 	"github.com/briandowns/spinner"
 	"golang.org/x/crypto/ssh"
@@ -153,6 +154,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		Title:                    cfg.Title,
 		UseCache:                 !cfg.NoCache,
 	})
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to initiate run")
 	}
@@ -253,6 +255,7 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 		TaskDefinitions: taskDefinitions,
 		TargetPaths:     targetPaths,
 	})
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to lint files")
 	}
@@ -360,22 +363,27 @@ func (s Service) Login(cfg LoginConfig) error {
 	indicator.Suffix = " Waiting for authorization..."
 	indicator.Start()
 
+	stop := func() {
+		indicator.Stop()
+		s.outputLatestVersionMessage()
+	}
+
 	for {
 		tokenResult, err := s.APIClient.AcquireToken(authCodeResult.TokenUrl)
 		if err != nil {
-			indicator.Stop()
+			stop()
 			return errors.Wrap(err, "unable to acquire the token")
 		}
 
 		switch tokenResult.State {
 		case "consumed":
-			indicator.Stop()
+			stop()
 			return errors.New("The code has already been used. Try again.")
 		case "expired":
-			indicator.Stop()
+			stop()
 			return errors.New("The code has expired. Try again.")
 		case "authorized":
-			indicator.Stop()
+			stop()
 			if tokenResult.Token == "" {
 				return errors.New("The code has been authorized, but there is no token. You can try again, but this is likely an issue with RWX Cloud. Please reach out at support@rwx.com.")
 			} else {
@@ -385,7 +393,7 @@ func (s Service) Login(cfg LoginConfig) error {
 		case "pending":
 			time.Sleep(1 * time.Second)
 		default:
-			indicator.Stop()
+			stop()
 			return errors.New("The code is in an unexpected state. You can try again, but this is likely an issue with RWX Cloud. Please reach out at support@rwx.com.")
 		}
 	}
@@ -393,6 +401,7 @@ func (s Service) Login(cfg LoginConfig) error {
 
 func (s Service) Whoami(cfg WhoamiConfig) error {
 	result, err := s.APIClient.Whoami()
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return errors.Wrap(err, "unable to determine details about the access token")
 	}
@@ -463,6 +472,7 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 		VaultName: cfg.Vault,
 		Secrets:   secrets,
 	})
+	s.outputLatestVersionMessage()
 
 	if result != nil && len(result.SetSecrets) > 0 {
 		fmt.Fprintln(s.Stdout)
@@ -510,6 +520,7 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	}
 
 	leafVersions, err := s.APIClient.GetLeafVersions()
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return errors.Wrap(err, "unable to fetch leaf versions")
 	}
@@ -817,6 +828,28 @@ func (s Service) findMintDirectoryPath(configuredDirectory string) (string, erro
 		parentDir, _ := filepath.Split(workingDirectory)
 		workingDirectory = filepath.Clean(parentDir)
 	}
+}
+
+func (s Service) outputLatestVersionMessage() {
+	showLatestVersion := os.Getenv("MINT_HIDE_LATEST_VERSION") == ""
+
+	if !showLatestVersion || !versions.NewVersionAvailable() {
+		return
+	}
+
+	w := s.Stderr
+	fmt.Fprintln(w, "========================================")
+	fmt.Fprintln(w, "A new version of Mint is available!")
+	fmt.Fprintf(w, "You are currently on version %s\n", versions.GetCliCurrentVersion())
+	fmt.Fprintf(w, "The latest version is %s\n", versions.GetCliLatestVersion())
+
+	if versions.InstalledWithHomebrew() {
+		fmt.Fprintln(w, "\nYou can update to the latest version with:")
+		fmt.Fprintln(w, "    brew upgrade rwx-research/tap/mint")
+	}
+
+	fmt.Fprintln(w, "========================================")
+	fmt.Fprintln(w)
 }
 
 func PickLatestMajorVersion(versions api.LeafVersionsResult, leaf string, _ string) (string, error) {
