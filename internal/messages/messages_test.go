@@ -14,15 +14,15 @@ var _ = Describe("FormatUserMessage", func() {
 
 		stackTrace := []messages.StackEntry{
 			{
-					FileName: "mint1.yml",
-					Line:     22,
-					Column:   11,
-					Name:     "*alias",
+				FileName: "mint1.yml",
+				Line:     22,
+				Column:   11,
+				Name:     "*alias",
 			},
 			{
-					FileName: "mint1.yml",
-					Line:     5,
-					Column:   22,
+				FileName: "mint1.yml",
+				Line:     5,
+				Column:   22,
 			},
 		}
 		Expect(messages.FormatUserMessage("message", "frame", stackTrace, "advice")).To(Equal(`message

@@ -370,16 +370,16 @@ func (c Client) GetLeafVersions() (*LeafVersionsResult, error) {
 }
 
 type ErrorMessage struct {
-	Message    string       				 `json:"message"`
+	Message    string                `json:"message"`
 	StackTrace []messages.StackEntry `json:"stack_trace,omitempty"`
-	Frame      string       			 	 `json:"frame"`
-	Advice     string       				 `json:"advice"`
+	Frame      string                `json:"frame"`
+	Advice     string                `json:"advice"`
 }
 
 // extractErrorMessage is a small helper function for parsing an API error message
 func extractErrorMessage(reader io.Reader) string {
 	errorStruct := struct {
-		Error 				string 				 `json:"error,omitempty"`
+		Error         string         `json:"error,omitempty"`
 		ErrorMessages []ErrorMessage `json:"error_messages,omitempty"`
 	}{}
 
