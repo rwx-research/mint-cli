@@ -1,8 +1,8 @@
 module github.com/rwx-research/mint-cli
 
-go 1.22.0
+go 1.23.0
 
-toolchain go1.23.6
+toolchain go1.24.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
@@ -14,8 +14,8 @@ require (
 	github.com/onsi/gomega v1.36.2
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.9.1
-	golang.org/x/crypto v0.33.0
-	golang.org/x/term v0.29.0
+	golang.org/x/crypto v0.36.0
+	golang.org/x/term v0.30.0
 )
 
 require github.com/mattn/go-isatty v0.0.20 // indirect
@@ -38,7 +38,7 @@ require (
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/spf13/pflag v1.0.6 // indirect
 	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/tools v0.28.0 // indirect
 )
