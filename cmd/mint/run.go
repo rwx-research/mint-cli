@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/rwx-research/mint-cli/internal/errors"
@@ -22,6 +23,7 @@ var (
 	MintFilePath   string
 	NoCache        bool
 	Open           bool
+	Debug          bool
 	Title          string
 
 	runCmd = &cobra.Command{
@@ -97,6 +99,26 @@ var (
 				}
 			}
 
+			if Debug {
+				fmt.Println("\nWaiting for run to hit a breakpoint...")
+
+				ticker := time.NewTicker(time.Second)
+				defer ticker.Stop()
+
+				for range ticker.C {
+					err := service.DebugTask(cli.DebugTaskConfig{DebugKey: runResult.RunId})
+					if errors.Is(err, errors.ErrRetry) {
+						continue
+					}
+					if errors.Is(err, errors.ErrGone) {
+						fmt.Println("Run finished without encountering a breakpoint.")
+						break
+					}
+
+					return err
+				}
+			}
+
 			return nil
 
 		},
@@ -111,6 +133,7 @@ func init() {
 	runCmd.Flags().StringVarP(&MintFilePath, "file", "f", "", "a Mint config file to use for sourcing task definitions (required)")
 	runCmd.Flags().StringVarP(&MintDirectory, "dir", "d", "", "the directory your Mint files are located in, typically `.mint`. By default, the CLI traverses up until it finds a `.mint` directory.")
 	runCmd.Flags().BoolVar(&Open, "open", false, "open the run in a browser")
+	runCmd.Flags().BoolVar(&Debug, "debug", false, "start a remote debugging session once a breakpoint is hit")
 	runCmd.Flags().StringVar(&Title, "title", "", "the title the UI will display for the Mint run")
 	runCmd.Flags().BoolVar(&Json, "json", false, "output json data to stdout")
 }

@@ -11,6 +11,7 @@ var (
 	ErrBadRequest    = errors.New("bad request")
 	ErrNotFound      = errors.New("not found")
 	ErrGone          = errors.New("gone")
+	ErrRetry         = errors.New("retry")
 
 	As        = errors.As
 	Errorf    = errors.Errorf
