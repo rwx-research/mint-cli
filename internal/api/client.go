@@ -96,8 +96,6 @@ func (c Client) GetDebugConnectionInfo(debugKey string) (DebugConnectionInfo, er
 			return connectionInfo, errors.Wrap(errors.ErrGone, connectionError.Error)
 		}
 		return connectionInfo, errors.ErrGone
-	case 503:
-		return connectionInfo, errors.ErrRetry
 	default:
 		return connectionInfo, errors.New(fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
 	}
