@@ -16,7 +16,7 @@ import (
 
 var (
 	AccessToken string
-	Debug       bool
+	Verbose     bool
 
 	mintHost           string
 	service            cli.Service
@@ -59,8 +59,8 @@ func init() {
 	}
 
 	rootCmd.PersistentFlags().StringVar(&AccessToken, "access-token", os.Getenv("RWX_ACCESS_TOKEN"), "the access token for Mint")
-	rootCmd.PersistentFlags().BoolVar(&Debug, "debug", false, "enable debug output")
-	_ = rootCmd.PersistentFlags().MarkHidden("debug")
+	rootCmd.PersistentFlags().BoolVar(&Verbose, "verbose", false, "enable debug output")
+	_ = rootCmd.PersistentFlags().MarkHidden("verbose")
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(debugCmd)

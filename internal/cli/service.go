@@ -49,6 +49,10 @@ func (s Service) DebugTask(cfg DebugTaskConfig) error {
 		return err
 	}
 
+	if !connectionInfo.Debuggable {
+		return errors.Wrap(errors.ErrRetry, "The task or run is not in a debuggable state")
+	}
+
 	privateUserKey, err := ssh.ParsePrivateKey([]byte(connectionInfo.PrivateUserKey))
 	if err != nil {
 		return errors.Wrapf(err, "unable to parse key material retrieved from Cloud API")

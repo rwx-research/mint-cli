@@ -512,40 +512,63 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			debugConfig = cli.DebugTaskConfig{
 				DebugKey: runID,
 			}
-
-			mockAPI.MockGetDebugConnectionInfo = func(runId string) (api.DebugConnectionInfo, error) {
-				Expect(runID).To(Equal(runId))
-				fetchedConnectionInfo = true
-				// Note: This is returning a matching private & public key. The real API returns different ones
-				return api.DebugConnectionInfo{PrivateUserKey: privateTestKey, PublicHostKey: publicTestKey, Address: agentAddress}, nil
-			}
-
-			mockSSH.MockConnect = func(addr string, _ ssh.ClientConfig) error {
-				Expect(addr).To(Equal(agentAddress))
-				connectedViaSSH = true
-				return nil
-			}
-
-			mockSSH.MockInteractiveSession = func() error {
-				interactiveSSHSessionStarted = true
-				return nil
-			}
 		})
 
-		JustBeforeEach(func() {
-			Expect(service.DebugTask(debugConfig)).To(Succeed())
+		Context("when the task is debuggable", func() {
+			BeforeEach(func() {
+				mockAPI.MockGetDebugConnectionInfo = func(runId string) (api.DebugConnectionInfo, error) {
+					Expect(runID).To(Equal(runId))
+					fetchedConnectionInfo = true
+					// Note: This is returning a matching private & public key. The real API returns different ones
+					return api.DebugConnectionInfo{Debuggable: true, PrivateUserKey: privateTestKey, PublicHostKey: publicTestKey, Address: agentAddress}, nil
+				}
+
+				mockSSH.MockConnect = func(addr string, _ ssh.ClientConfig) error {
+					Expect(addr).To(Equal(agentAddress))
+					connectedViaSSH = true
+					return nil
+				}
+
+				mockSSH.MockInteractiveSession = func() error {
+					interactiveSSHSessionStarted = true
+					return nil
+				}
+			})
+
+			JustBeforeEach(func() {
+				Expect(service.DebugTask(debugConfig)).To(Succeed())
+			})
+
+			It("fetches the connection info from the API", func() {
+				Expect(fetchedConnectionInfo).To(BeTrue())
+			})
+
+			It("connects to the agent over SSH", func() {
+				Expect(connectedViaSSH).To(BeTrue())
+			})
+
+			It("starts an interactive SSH session", func() {
+				Expect(interactiveSSHSessionStarted).To(BeTrue())
+			})
 		})
 
-		It("fetches the connection info from the API", func() {
-			Expect(fetchedConnectionInfo).To(BeTrue())
-		})
+		Context("when the task isn't debuggable yet", func() {
+			var err error
 
-		It("connects to the agent over SSH", func() {
-			Expect(connectedViaSSH).To(BeTrue())
-		})
+			BeforeEach(func() {
+				mockAPI.MockGetDebugConnectionInfo = func(runId string) (api.DebugConnectionInfo, error) {
+					Expect(runID).To(Equal(runId))
+					return api.DebugConnectionInfo{Debuggable: false}, nil
+				}
+			})
 
-		It("starts an interactive SSH session", func() {
-			Expect(interactiveSSHSessionStarted).To(BeTrue())
+			JustBeforeEach(func() {
+				err = service.DebugTask(debugConfig)
+			})
+
+			It("returns a 'Retry' error", func() {
+				Expect(errors.Is(err, errors.ErrRetry)).To(BeTrue())
+			})
 		})
 	})
 
