@@ -2,7 +2,7 @@ module github.com/rwx-research/mint-cli
 
 go 1.23.0
 
-toolchain go1.24.1
+toolchain go1.24.2
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
@@ -11,7 +11,7 @@ require (
 	github.com/magefile/mage v1.15.0
 	github.com/manifoldco/promptui v0.9.0
 	github.com/onsi/ginkgo/v2 v2.23.4
-	github.com/onsi/gomega v1.36.3
+	github.com/onsi/gomega v1.37.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.37.0
