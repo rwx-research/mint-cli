@@ -176,6 +176,93 @@ func (c Client) InitiateRun(cfg InitiateRunConfig) (*InitiateRunResult, error) {
 	}
 }
 
+func (c Client) InitiateDispatch(cfg InitiateDispatchConfig) (*InitiateDispatchResult, error) {
+	endpoint := "/mint/api/runs/dispatches"
+
+	if err := cfg.Validate(); err != nil {
+		return nil, errors.Wrap(err, "validation failed")
+	}
+
+	encodedBody, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to encode as JSON")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(encodedBody))
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to create new HTTP request")
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.RoundTrip(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "HTTP request failed")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 201 {
+		errorStruct := struct {
+			Error  string `json:"error,omitempty"`
+		}{}
+
+		if err := json.NewDecoder(resp.Body).Decode(&errorStruct); err != nil {
+			return nil, errors.New(fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
+		}
+
+		return nil, errors.New(errorStruct.Error)
+	}
+
+	respBody := struct {
+		DispatchId string `json:"dispatch_id"`
+	}{}
+
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return nil, errors.Wrap(err, "unable to parse API response")
+	}
+
+	return &InitiateDispatchResult{
+		DispatchId: respBody.DispatchId,
+	}, nil
+}
+
+func (c Client) GetDispatch(cfg GetDispatchConfig) (*GetDispatchResult, error) {
+	endpoint := fmt.Sprintf("/mint/api/runs/dispatches/%s", cfg.DispatchId)
+
+	req, err := http.NewRequest(http.MethodGet, endpoint, bytes.NewBuffer(make([]byte, 0)))
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to create new HTTP request")
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.RoundTrip(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "HTTP request failed")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, errors.New(fmt.Sprintf("Unable to call Mint API - %s", resp.Status))
+	}
+
+	respBody := struct {
+		Status string           `json:"status"`
+		Error  string           `json:"error"`
+		Runs   []GetDispatchRun `json:"runs"`
+	}{}
+
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		return nil, errors.Wrap(err, "unable to parse API response")
+	}
+
+	return &GetDispatchResult{
+		Status: respBody.Status,
+		Error:  respBody.Error,
+		Runs:   respBody.Runs,
+	}, nil
+}
+
 func (c Client) Lint(cfg LintConfig) (*LintResult, error) {
 	endpoint := "/mint/api/lints"
 

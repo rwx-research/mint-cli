@@ -216,4 +216,76 @@ var _ = Describe("API Client", func() {
 			Expect(err).To(BeNil())
 		})
 	})
+
+	Describe("InitiateDispatch", func() {
+		It("builds the request and parses the response", func() {
+			body := struct {
+				DispatchId string `json:"dispatch_id"`
+			}{
+				DispatchId: "dispatch-123",
+			}
+			bodyBytes, _ := json.Marshal(body)
+
+			roundTrip := func(req *http.Request) (*http.Response, error) {
+				Expect(req.URL.Path).To(Equal("/mint/api/runs/dispatches"))
+				Expect(req.Method).To(Equal(http.MethodPost))
+				return &http.Response{
+					Status:     "201 Created",
+					StatusCode: 201,
+					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+				}, nil
+			}
+
+			c := api.NewClientWithRoundTrip(roundTrip)
+
+			dispatchConfig := api.InitiateDispatchConfig{
+				DispatchKey: "test-dispatch-key",
+				Params:      map[string]string{"key1": "value1"},
+				Ref:         "main",
+				Title:       "Test Dispatch",
+			}
+
+			result, err := c.InitiateDispatch(dispatchConfig)
+			Expect(err).To(BeNil())
+			Expect(result.DispatchId).To(Equal("dispatch-123"))
+		})
+	})
+
+	Describe("GetDispatch", func() {
+		It("builds the request and parses the response", func() {
+			body := struct {
+				Status string           `json:"status"`
+				Error  string           `json:"error"`
+				Runs   []api.GetDispatchRun `json:"runs"`
+			}{
+				Status: "ready",
+				Error:  "",
+				Runs:   []api.GetDispatchRun{{RunId: "run-123", RunUrl: "https://example.com/run-123"}},
+			}
+			bodyBytes, _ := json.Marshal(body)
+
+			roundTrip := func(req *http.Request) (*http.Response, error) {
+				Expect(req.URL.Path).To(Equal("/mint/api/runs/dispatches/dispatch-123"))
+				Expect(req.Method).To(Equal(http.MethodGet))
+				return &http.Response{
+					Status:     "200 OK",
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+				}, nil
+			}
+
+			c := api.NewClientWithRoundTrip(roundTrip)
+
+			dispatchConfig := api.GetDispatchConfig{
+				DispatchId: "dispatch-123",
+			}
+
+			result, err := c.GetDispatch(dispatchConfig)
+			Expect(err).To(BeNil())
+			Expect(result.Status).To(Equal("ready"))
+			Expect(result.Runs).To(HaveLen(1))
+			Expect(result.Runs[0].RunId).To(Equal("run-123"))
+			Expect(result.Runs[0].RunUrl).To(Equal("https://example.com/run-123"))
+		})
+	})
 })
