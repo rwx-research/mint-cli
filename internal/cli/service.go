@@ -146,6 +146,28 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
 	}
+	if len(taskDefinitions) != 1 {
+		return nil, fmt.Errorf("Expected exactly 1 task definition, got %d", len(taskDefinitions))
+	}
+
+	addBaseIfNeeded, err := s.resolveBaseForFiles(taskDefinitions, baseLayerSpec{})
+	s.outputLatestVersionMessage()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to resolve base")
+	}
+
+	if addBaseIfNeeded.HasChanges() {
+		fmt.Fprintf(s.Stderr, `WARNING: The file at %q has been modified to include a "base" block. This block will be required in the future.
+For more information, see the documentation at https://www.rwx.com/docs/mint/base
+
+`, taskDefinitionYamlPath)
+
+		// Reload task definitions after modifying the file
+		taskDefinitions, err = s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to read provided files")
+		}
+	}
 
 	i := 0
 	initializationParameters := make([]api.InitializationParameter, len(cfg.InitParameters))
@@ -165,7 +187,6 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		Title:                    cfg.Title,
 		UseCache:                 !cfg.NoCache,
 	})
-	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to initiate run")
 	}
@@ -742,10 +763,10 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 	}
 
 	result, err := s.resolveBaseForFiles(yamlFiles, requestedSpec)
+	s.outputLatestVersionMessage()
 	if err != nil {
 		return err
 	}
-	s.outputLatestVersionMessage()
 
 	pluralizeFiles := func(files []baseLayerRunFile) string {
 		if len(files) == 1 {

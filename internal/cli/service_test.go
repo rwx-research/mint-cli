@@ -77,9 +77,22 @@ var _ = Describe("CLI Service", func() {
 
 	Describe("initiating a run", func() {
 		var runConfig cli.InitiateRunConfig
+		var baseSpec string
+		var resolveBaseLayerCalled bool
 
 		BeforeEach(func() {
 			runConfig = cli.InitiateRunConfig{}
+			baseSpec = "base:\n  os: ubuntu 24.04\n  tag: 1.0\n"
+			resolveBaseLayerCalled = false
+
+			mockAPI.MockResolveBaseLayer = func(cfg api.ResolveBaseLayerConfig) (api.ResolveBaseLayerResult, error) {
+				resolveBaseLayerCalled = true
+				return api.ResolveBaseLayerResult{
+					Os:   "ubuntu 24.04",
+					Tag:  "1.0",
+					Arch: "x86_64",
+				}, nil
+			}
 		})
 
 		Context("with a specific mint file and no specific directory", func() {
@@ -90,8 +103,8 @@ var _ = Describe("CLI Service", func() {
 				var receivedMintDir []api.MintDirectoryEntry
 
 				BeforeEach(func() {
-					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
-					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
+					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n" + baseSpec
+					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n" + baseSpec
 					receivedSpecifiedFileContent = ""
 
 					var err error
@@ -172,7 +185,7 @@ var _ = Describe("CLI Service", func() {
 				var receivedSpecifiedFileContent string
 
 				BeforeEach(func() {
-					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
+					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n" + baseSpec
 					receivedSpecifiedFileContent = ""
 
 					var err error
@@ -225,7 +238,7 @@ var _ = Describe("CLI Service", func() {
 				var receivedSpecifiedFileContent string
 
 				BeforeEach(func() {
-					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
+					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n" + baseSpec
 					receivedSpecifiedFileContent = ""
 
 					var err error
@@ -266,6 +279,65 @@ var _ = Describe("CLI Service", func() {
 				It("sends the file contents to cloud", func() {
 					Expect(receivedSpecifiedFileContent).To(Equal(originalSpecifiedFileContent))
 				})
+
+				It("doesn't call the API to resolve the current base layer", func() {
+					Expect(resolveBaseLayerCalled).To(BeFalse())
+				})
+			})
+
+			Context("when 'base' is missing", func() {
+				var originalSpecifiedFileContent string
+				var receivedSpecifiedFileContent string
+
+				BeforeEach(func() {
+					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
+
+					var err error
+
+					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
+					err = os.MkdirAll(workingDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.Chdir(workingDir)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					runConfig.MintFilePath = "mint.yml"
+					runConfig.MintDirectory = ""
+
+					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
+						Expect(cfg.TaskDefinitions).To(HaveLen(1))
+						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
+						Expect(cfg.MintDirectory).To(HaveLen(0))
+						Expect(cfg.UseCache).To(BeTrue())
+						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
+						return &api.InitiateRunResult{
+							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							TargetedTaskKeys: []string{},
+							DefinitionPath:   ".mint/mint.yml",
+						}, nil
+					}
+				})
+
+				JustBeforeEach(func() {
+					_, err := service.InitiateRun(runConfig)
+					Expect(err).ToNot(HaveOccurred())
+				})
+
+				It("calls the API to resolve the current base layer", func() {
+					Expect(resolveBaseLayerCalled).To(BeTrue())
+				})
+
+				It("passes the updated file content to initiate run", func() {
+					Expect(receivedSpecifiedFileContent).To(Equal(fmt.Sprintf("%s\n%s", baseSpec, originalSpecifiedFileContent)))
+				})
+
+				It("prints a warning", func() {
+					Expect(mockStderr.String()).To(ContainSubstring("WARNING: The file at \"mint.yml\" has been modified to include a \"base\" block. This block will be required in the future.\nFor more information, see the documentation at https://www.rwx.com/docs/mint/base\n"))
+				})
 			})
 		})
 
@@ -290,8 +362,8 @@ var _ = Describe("CLI Service", func() {
 				var receivedMintDir []api.MintDirectoryEntry
 
 				BeforeEach(func() {
-					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
-					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n"
+					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n" + baseSpec
+					originalMintDirFileContent = "tasks:\n  - key: mintdir\n    run: echo 'mintdir'\n" + baseSpec
 					receivedSpecifiedFileContent = ""
 
 					var err error
@@ -358,7 +430,7 @@ var _ = Describe("CLI Service", func() {
 				var receivedSpecifiedFileContent string
 
 				BeforeEach(func() {
-					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
+					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n" + baseSpec
 					receivedSpecifiedFileContent = ""
 
 					var err error
@@ -440,7 +512,7 @@ var _ = Describe("CLI Service", func() {
 				var originalSpecifiedFileContent string
 
 				BeforeEach(func() {
-					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
+					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n" + baseSpec
 
 					var err error
 
