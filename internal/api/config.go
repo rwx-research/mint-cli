@@ -53,6 +53,40 @@ func (c InitiateRunConfig) Validate() error {
 	return nil
 }
 
+type InitiateDispatchConfig struct {
+	DispatchKey string            `json:"key"`
+	Params      map[string]string `json:"params"`
+	Title       string            `json:"title,omitempty"`
+	Ref         string            `json:"ref,omitempty"`
+}
+
+type InitiateDispatchResult struct {
+	DispatchId string
+}
+
+func (c InitiateDispatchConfig) Validate() error {
+	if c.DispatchKey == "" {
+		return errors.New("no dispatch key was provided")
+	}
+
+	return nil
+}
+
+type GetDispatchConfig struct {
+	DispatchId  string
+}
+
+type GetDispatchRun = struct {
+	RunId  string `json:"run_id"`
+	RunUrl string `json:"run_url"`
+}
+
+type GetDispatchResult struct {
+	Status string
+	Error  string
+	Runs   []GetDispatchRun
+}
+
 type LintConfig struct {
 	TaskDefinitions []TaskDefinition `json:"task_definitions"`
 	TargetPaths     []string         `json:"target_paths"`

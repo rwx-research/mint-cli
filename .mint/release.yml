@@ -1,3 +1,20 @@
+on:
+  dispatch:
+    - key: release-mint-cli
+      title: "Release Mint CLI ${{ init.version }} (${{ init.kind }})"
+      params:
+        - key: version
+          description: "The version to release. If kind is production, this must be in the format vX.X.X"
+          required: true
+        - key: kind
+          description: "The kind of release to perform. Must be one of 'production', 'unstable', or 'testing'"
+          default: production
+          required: false
+      init:
+        commit: ${{ event.git.sha }}
+        kind: ${{ event.dispatch.params.kind }}
+        version: ${{ event.dispatch.params.version }}
+
 concurrency-pools:
   - id: rwx-research/mint-cli::release-${{ init.kind }}
     capacity: 1

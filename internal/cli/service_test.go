@@ -483,6 +483,140 @@ var _ = Describe("CLI Service", func() {
 		})
 	})
 
+	Describe("initiating a dispatch", func() {
+		var dispatchConfig cli.InitiateDispatchConfig
+
+		BeforeEach(func() {
+			dispatchConfig = cli.InitiateDispatchConfig{}
+		})
+
+		Context("with valid dispatch parameters", func() {
+			var originalParams map[string]string
+			var receivedParams map[string]string
+
+			BeforeEach(func() {
+				originalParams = map[string]string{"key1": "value1", "key2": "value2"}
+				receivedParams = nil
+
+				dispatchConfig.DispatchKey = "test-dispatch-key"
+				dispatchConfig.Params = originalParams
+				dispatchConfig.Title = "Test Dispatch"
+				dispatchConfig.Ref = "main"
+
+				mockAPI.MockInitiateDispatch = func(cfg api.InitiateDispatchConfig) (*api.InitiateDispatchResult, error) {
+					Expect(cfg.DispatchKey).To(Equal(dispatchConfig.DispatchKey))
+					Expect(cfg.Params).To(Equal(originalParams))
+					Expect(cfg.Title).To(Equal(dispatchConfig.Title))
+					Expect(cfg.Ref).To(Equal(dispatchConfig.Ref))
+					receivedParams = cfg.Params
+					return &api.InitiateDispatchResult{DispatchId: "12345"}, nil
+				}
+
+				mockAPI.MockGetDispatch = func(cfg api.GetDispatchConfig) (*api.GetDispatchResult, error) {
+					Expect(cfg.DispatchId).To(Equal("12345"))
+					return &api.GetDispatchResult{
+						Status: "ready",
+						Runs: []api.GetDispatchRun{
+							{RunId: "run-123", RunUrl: "https://example.com/run-123"},
+						},
+					}, nil
+				}
+			})
+
+			It("calls the API and returns the dispatch ID", func() {
+				dispatchResult, err := service.InitiateDispatch(dispatchConfig)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(receivedParams).To(Equal(originalParams))
+				Expect(dispatchResult.DispatchId).To(Equal("12345"))
+			})
+		})
+
+		Context("with missing dispatch key", func() {
+			BeforeEach(func() {
+				dispatchConfig.DispatchKey = ""
+			})
+
+			It("returns a validation error", func() {
+				_, err := service.InitiateDispatch(dispatchConfig)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("a dispatch key must be provided"))
+			})
+		})
+	})
+
+	Describe("getting a dispatch", func() {
+		var dispatchConfig cli.GetDispatchConfig
+
+		BeforeEach(func() {
+			dispatchConfig = cli.GetDispatchConfig{}
+		})
+
+		Context("when the dispatch result is not ready", func() {
+			BeforeEach(func() {
+				dispatchConfig.DispatchId = "12345"
+
+				mockAPI.MockGetDispatch = func(cfg api.GetDispatchConfig) (*api.GetDispatchResult, error) {
+					return &api.GetDispatchResult{Status: "not_ready"}, nil
+				}
+			})
+
+			It("returns a retry error", func() {
+				_, err := service.GetDispatch(dispatchConfig)
+				Expect(err).To(HaveOccurred())
+				Expect(errors.Is(err, errors.ErrRetry)).To(BeTrue())
+			})
+		})
+
+		Context("when the dispatch result contains an error", func() {
+			BeforeEach(func() {
+				dispatchConfig.DispatchId = "12345"
+
+				mockAPI.MockGetDispatch = func(cfg api.GetDispatchConfig) (*api.GetDispatchResult, error) {
+					return &api.GetDispatchResult{Status: "error", Error: "dispatch failed"}, nil
+				}
+			})
+
+			It("returns the error", func() {
+				_, err := service.GetDispatch(dispatchConfig)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("dispatch failed"))
+			})
+		})
+
+		Context("when the dispatch result succeeds", func() {
+			BeforeEach(func() {
+				dispatchConfig.DispatchId = "12345"
+
+				mockAPI.MockGetDispatch = func(cfg api.GetDispatchConfig) (*api.GetDispatchResult, error) {
+					return &api.GetDispatchResult{Status: "ready", Runs: []api.GetDispatchRun{api.GetDispatchRun{RunId: "runid", RunUrl: "runurl"}}}, nil
+				}
+			})
+
+			It("returns the runs", func() {
+				runs, err := service.GetDispatch(dispatchConfig)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(runs[0].RunId).To(Equal("runid"))
+				Expect(runs[0].RunUrl).To(Equal("runurl"))
+			})
+		})
+
+		Context("when no runs are created", func() {
+			BeforeEach(func() {
+				dispatchConfig.DispatchId = "12345"
+
+				mockAPI.MockGetDispatch = func(cfg api.GetDispatchConfig) (*api.GetDispatchResult, error) {
+					return &api.GetDispatchResult{Status: "ready", Runs: []api.GetDispatchRun{}}, nil
+				}
+			})
+
+			It("errors", func() {
+				_, err := service.GetDispatch(dispatchConfig)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("No runs were created as a result of this dispatch"))
+			})
+		})
+	})
+
 	Describe("debugging a task", func() {
 		const (
 			// The CLI will validate key material before connecting over SSH, hence we need some "real" keys here
