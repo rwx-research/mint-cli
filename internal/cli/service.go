@@ -706,6 +706,16 @@ type baseLayerRunFile struct {
 	Updated  bool
 }
 
+type resolveBaseResult struct {
+	ErroredRunFiles []baseLayerRunFile
+	UpdatedRunFiles []baseLayerRunFile
+	NoRunFilesFound bool
+}
+
+func (r resolveBaseResult) HasChanges() bool {
+	return len(r.ErroredRunFiles) > 0 || len(r.UpdatedRunFiles) > 0
+}
+
 var reTasks = regexp.MustCompile(`(?m)^tasks:`)
 var ResolveBaseError = errors.Wrap(HandledError, "failed to update some files")
 
@@ -715,7 +725,6 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		return errors.Wrap(err, "validation failed")
 	}
 
-	runFiles := make([]baseLayerRunFile, 0)
 	mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
 	if err != nil {
 		return err
@@ -732,10 +741,55 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		Arch: cfg.Arch,
 	}
 
-	for _, entry := range yamlFiles {
+	result, err := s.resolveBaseForFiles(yamlFiles, requestedSpec)
+	if err != nil {
+		return err
+	}
+	s.outputLatestVersionMessage()
+
+	pluralizeFiles := func(files []baseLayerRunFile) string {
+		if len(files) == 1 {
+			return "1 file"
+		}
+		return fmt.Sprintf("%d files", len(files))
+	}
+
+	if result.NoRunFilesFound {
+		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
+	} else if !result.HasChanges() {
+		fmt.Fprintln(s.Stdout, "No run files needed to be updated.")
+	} else {
+		if len(result.UpdatedRunFiles) > 0 {
+			fmt.Fprintf(s.Stdout, "Updated %s:\n", pluralizeFiles(result.UpdatedRunFiles))
+			for _, runFile := range result.UpdatedRunFiles {
+				fmt.Fprintf(s.Stdout, "%s\n", runFile.Filepath)
+			}
+			if len(result.ErroredRunFiles) > 0 {
+				fmt.Fprintln(s.Stdout)
+			}
+		}
+
+		if len(result.ErroredRunFiles) > 0 {
+			fmt.Fprintf(s.Stdout, "Failed to update %s:\n", pluralizeFiles(result.ErroredRunFiles))
+			for _, runFile := range result.ErroredRunFiles {
+				fmt.Fprintf(s.Stdout, "%s → %s\n", runFile.Filepath, runFile.Error)
+			}
+		}
+	}
+
+	if len(result.ErroredRunFiles) > 0 {
+		return ResolveBaseError
+	}
+	return nil
+}
+
+func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, requestedSpec baseLayerSpec) (resolveBaseResult, error) {
+	runFiles := make([]baseLayerRunFile, 0)
+
+	for _, entry := range mintFiles {
 		content, err := os.ReadFile(entry.OriginalPath)
 		if err != nil {
-			return err
+			return resolveBaseResult{}, err
 		}
 
 		parsed := struct {
@@ -760,15 +814,13 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 	}
 
 	if len(runFiles) == 0 {
-		fmt.Fprintln(s.Stdout, "No run files need to be updated.")
-		return nil
+		return resolveBaseResult{NoRunFilesFound: true}, nil
 	}
 
 	specToResolved, err := s.resolveBaseSpecs(runFiles)
 	if err != nil {
-		return errors.Wrap(err, "unable to resolve base specs")
+		return resolveBaseResult{}, errors.Wrap(err, "unable to resolve base specs")
 	}
-	s.outputLatestVersionMessage()
 
 	// Inject base config in file
 	erroredRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
@@ -784,41 +836,11 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		}
 	}
 
-	pluralizeFiles := func(files []baseLayerRunFile) string {
-		if len(files) == 1 {
-			return "1 file"
-		}
-		return fmt.Sprintf("%d files", len(files))
-	}
-
-	if len(runFiles) == 0 {
-		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
-	} else if len(updatedRunFiles) == 0 && len(erroredRunFiles) == 0 {
-		fmt.Fprintln(s.Stdout, "No run files needed to be updated.")
-	} else {
-		if len(updatedRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Updated %s:\n", pluralizeFiles(updatedRunFiles))
-			for _, runFile := range updatedRunFiles {
-				fmt.Fprintf(s.Stdout, "%s\n", runFile.Filepath)
-			}
-			if len(erroredRunFiles) > 0 {
-				fmt.Fprintln(s.Stdout)
-			}
-		}
-
-		if len(erroredRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Failed to update %s:\n", pluralizeFiles(erroredRunFiles))
-			for _, runFile := range erroredRunFiles {
-				fmt.Fprintf(s.Stdout, "%s → %s\n", runFile.Filepath, runFile.Error)
-			}
-		}
-	}
-
-	if len(erroredRunFiles) > 0 {
-		return ResolveBaseError
-	}
-
-	return nil
+	return resolveBaseResult{
+		ErroredRunFiles: erroredRunFiles,
+		UpdatedRunFiles: updatedRunFiles,
+		NoRunFilesFound: len(runFiles) == 0,
+	}, nil
 }
 
 func (s Service) resolveBaseSpecs(runFiles []baseLayerRunFile) (map[baseLayerSpec]baseLayerSpec, error) {
