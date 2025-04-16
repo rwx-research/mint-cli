@@ -26,7 +26,7 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/goccy/go-yaml"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/sync/semaphore"
+	"golang.org/x/sync/errgroup"
 )
 
 var HandledError = errors.New("handled error")
@@ -218,7 +218,7 @@ func (s Service) GetDispatch(cfg GetDispatchConfig) ([]GetDispatchRun, error) {
 
 	runs := make([]GetDispatchRun, len(dispatchResult.Runs))
 	for i, run := range dispatchResult.Runs {
-		runs[i] = GetDispatchRun{RunId:  run.RunId, RunUrl: run.RunUrl}
+		runs[i] = GetDispatchRun{RunId: run.RunId, RunUrl: run.RunUrl}
 	}
 
 	return runs, nil
@@ -828,34 +828,31 @@ func (s Service) resolveBaseSpecs(runFiles []baseLayerRunFile) (map[baseLayerSpe
 		specToResolved[runFile.Spec] = runFile.Spec
 	}
 
-	apiConcurrency := int64(3)
-	sem := semaphore.NewWeighted(apiConcurrency)
-	ctx := context.Background()
+	errs, _ := errgroup.WithContext(context.Background())
+	errs.SetLimit(3)
 
 	for spec := range specToResolved {
-		if err := sem.Acquire(ctx, 1); err != nil {
-			return nil, errors.Wrap(err, "unable to acquire semaphore")
-		}
-
-		go func(spec baseLayerSpec) {
-			defer sem.Release(1)
-			// TODO: resolve base from server, set to map value
-			// resolvedSpec, err := s.APIClient.ResolveBaseLayer()
-			// if err != nil {
-			// 	return errors.Wrap(err, "unable to resolve base layer")
-			// }
-			// specToResolved[spec] = resolvedSpec
-			resolvedSpec := baseLayerSpec{
-				Os:   "ubuntu 24.04",
-				Arch: "x86_64",
-				Tag:  "1.0",
+		errs.Go(func() error {
+			resolvedSpec, err := s.APIClient.ResolveBaseLayer(api.ResolveBaseLayerConfig{
+				Os:   spec.Os,
+				Arch: spec.Arch,
+				Tag:  spec.Tag,
+			})
+			if err != nil {
+				return errors.Wrap(err, fmt.Sprintf("unable to resolve base layer %+v", spec))
 			}
-			specToResolved[spec] = resolvedSpec.Merge(spec)
-		}(spec)
+
+			specToResolved[spec] = baseLayerSpec{
+				Os:   resolvedSpec.Os,
+				Tag:  resolvedSpec.Tag,
+				Arch: resolvedSpec.Arch,
+			}
+			return nil
+		})
 	}
 
-	if err := sem.Acquire(ctx, apiConcurrency); err != nil {
-		return nil, errors.Wrap(err, "unable to acquire semaphore")
+	if err := errs.Wait(); err != nil {
+		return nil, err
 	}
 
 	return specToResolved, nil

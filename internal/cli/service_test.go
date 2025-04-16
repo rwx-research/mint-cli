@@ -1630,6 +1630,45 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 	})
 
 	Describe("resolving base layers", func() {
+		var apiOs string
+		var apiTag string
+		var apiArch string
+		var apiCallCount int
+		var apiError func(callCount int) error
+
+		BeforeEach(func() {
+			apiOs = "gentoo 99"
+			apiTag = "1.2"
+			apiArch = "x86_64"
+			apiCallCount = 0
+			apiError = func(callCount int) error { return nil }
+
+			mockAPI.MockResolveBaseLayer = func(cfg api.ResolveBaseLayerConfig) (api.ResolveBaseLayerResult, error) {
+				apiCallCount += 1
+				if err := apiError(apiCallCount); err != nil {
+					return api.ResolveBaseLayerResult{}, err
+				}
+
+				os := cfg.Os
+				if os == "" {
+					os = apiOs
+				}
+				tag := cfg.Tag
+				if tag == "" {
+					tag = apiTag
+				}
+				arch := cfg.Arch
+				if arch == "" {
+					arch = apiArch
+				}
+				return api.ResolveBaseLayerResult{
+					Os:   os,
+					Tag:  tag,
+					Arch: arch,
+				}, nil
+			}
+		})
+
 		Context("when no yaml files found in the default directory", func() {
 			var mintDir string
 
@@ -1684,8 +1723,6 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
-					Os:         "gentoo 99",
-					Tag:        "2.3",
 					Arch:       "quantum",
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -1696,7 +1733,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(contents)).To(Equal(`base:
   os: gentoo 99
-  tag: 2.3
+  tag: 1.2
   arch: quantum
 
 tasks:
@@ -1758,7 +1795,7 @@ tasks:
 
 base:
   os: gentoo 99
-  tag: 1.0
+  tag: 1.2
 
 tasks:
   - key: a
@@ -1812,7 +1849,7 @@ tasks:
 
 base:
   os: gentoo 99
-  tag: 1.0
+  tag: 1.2
   arch: quantum # comment persists
 
 tasks:
@@ -1869,7 +1906,7 @@ tasks:
 
 base:
   os: gentoo 99
-  tag: 1.0
+  tag: 1.2
 `))
 
 				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
@@ -1922,7 +1959,7 @@ tasks:
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(contents)).To(Equal(`base:
   os: gentoo 99
-  tag: 1.0
+  tag: 1.2
 
 tasks:
   - key: a
@@ -1933,7 +1970,7 @@ tasks:
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(contents)).To(Equal(`base:
   os: gentoo 88
-  tag: 1.0
+  tag: 1.2
 
 tasks:
   - key: c
@@ -1944,7 +1981,7 @@ tasks:
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(contents)).To(Equal(`base:
   os: gentoo 99
-  tag: 1.0
+  tag: 1.2
 
 tasks:
   - key: e
@@ -1955,6 +1992,44 @@ tasks:
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "one.yaml")))
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "two.yaml")))
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "three.yaml")))
+			})
+
+			Context("when an API request fails", func() {
+				It("doesn't update any files", func() {
+					contentsOne, err := os.ReadFile(filepath.Join(mintDir, "one.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					contentsTwo, err := os.ReadFile(filepath.Join(mintDir, "two.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					contentsThree, err := os.ReadFile(filepath.Join(mintDir, "three.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+
+					apiError = func(callCount int) error {
+						if callCount == 2 {
+							return errors.New("API request failed")
+						}
+						return nil
+					}
+
+					err = service.ResolveBase(cli.ResolveBaseConfig{
+						DefaultDir: mintDir,
+					})
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("API request failed"))
+
+					var contents []byte
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "one.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(string(contentsOne)))
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "two.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(string(contentsTwo)))
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "three.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(string(contentsThree)))
+				})
 			})
 		})
 	})
