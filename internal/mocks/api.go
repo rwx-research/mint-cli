@@ -16,6 +16,7 @@ type API struct {
 	MockLint                   func(api.LintConfig) (*api.LintResult, error)
 	MockInitiateDispatch       func(api.InitiateDispatchConfig) (*api.InitiateDispatchResult, error)
 	MockGetDispatch            func(api.GetDispatchConfig) (*api.GetDispatchResult, error)
+	MockResolveBaseLayer       func(api.ResolveBaseLayerConfig) (api.ResolveBaseLayerResult, error)
 }
 
 func (c *API) InitiateRun(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
@@ -96,4 +97,12 @@ func (c *API) GetDispatch(cfg api.GetDispatchConfig) (*api.GetDispatchResult, er
 	}
 
 	return nil, errors.New("MockGetDispatch was not configured")
+}
+
+func (c *API) ResolveBaseLayer(cfg api.ResolveBaseLayerConfig) (api.ResolveBaseLayerResult, error) {
+	if c.MockResolveBaseLayer != nil {
+		return c.MockResolveBaseLayer(cfg)
+	}
+
+	return api.ResolveBaseLayerResult{}, errors.New("MockResolveBaseLayer was not configured")
 }

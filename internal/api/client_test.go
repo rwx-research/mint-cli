@@ -254,8 +254,8 @@ var _ = Describe("API Client", func() {
 	Describe("GetDispatch", func() {
 		It("builds the request and parses the response", func() {
 			body := struct {
-				Status string           `json:"status"`
-				Error  string           `json:"error"`
+				Status string               `json:"status"`
+				Error  string               `json:"error"`
 				Runs   []api.GetDispatchRun `json:"runs"`
 			}{
 				Status: "ready",
@@ -286,6 +286,37 @@ var _ = Describe("API Client", func() {
 			Expect(result.Runs).To(HaveLen(1))
 			Expect(result.Runs[0].RunId).To(Equal("run-123"))
 			Expect(result.Runs[0].RunUrl).To(Equal("https://example.com/run-123"))
+		})
+	})
+
+	Describe("ResolveBaseLayer", func() {
+		It("builds the request and parses the response", func() {
+			roundTrip := func(req *http.Request) (*http.Response, error) {
+				Expect(req.URL.Path).To(Equal("/mint/api/base_layers/resolve"))
+				Expect(req.Method).To(Equal(http.MethodPost))
+				reqBody, err := io.ReadAll(req.Body)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reqBody).To(ContainSubstring("gentoo 99"))
+
+				body := `{"os": "gentoo 99", "tag": "1.2", "arch": "quantum"}`
+				return &http.Response{
+					Status:     "200 OK",
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewReader([]byte(body))),
+				}, nil
+			}
+
+			c := api.NewClientWithRoundTrip(roundTrip)
+
+			resolveConfig := api.ResolveBaseLayerConfig{
+				Os: "gentoo 99",
+			}
+
+			result, err := c.ResolveBaseLayer(resolveConfig)
+			Expect(err).To(BeNil())
+			Expect(result.Os).To(Equal("gentoo 99"))
+			Expect(result.Tag).To(Equal("1.2"))
+			Expect(result.Arch).To(Equal("quantum"))
 		})
 	})
 })
