@@ -468,6 +468,43 @@ func (c Client) GetLeafVersions() (*LeafVersionsResult, error) {
 	return &respBody, nil
 }
 
+func (c Client) ResolveBaseLayer(cfg ResolveBaseLayerConfig) (ResolveBaseLayerResult, error) {
+	endpoint := "/mint/api/base_layers/resolve"
+	result := ResolveBaseLayerResult{}
+
+	encodedBody, err := json.Marshal(cfg)
+	if err != nil {
+		return result, errors.Wrap(err, "unable to encode as JSON")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(encodedBody))
+	if err != nil {
+		return result, errors.Wrap(err, "unable to create new HTTP request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.RoundTrip(req)
+	if err != nil {
+		return result, errors.Wrap(err, "HTTP request failed")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		msg := extractErrorMessage(resp.Body)
+		if msg == "" {
+			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
+		}
+		return result, errors.New(msg)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return result, errors.Wrap(err, "unable to parse API response")
+	}
+
+	return result, nil
+}
+
 type ErrorMessage struct {
 	Message    string                `json:"message"`
 	StackTrace []messages.StackEntry `json:"stack_trace,omitempty"`

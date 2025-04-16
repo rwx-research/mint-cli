@@ -7,6 +7,7 @@ toolchain go1.24.1
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/briandowns/spinner v1.23.2
+	github.com/goccy/go-yaml v1.17.1
 	github.com/kopoli/go-terminal-size v0.0.0-20170219200355-5c97524c8b54
 	github.com/magefile/mage v1.15.0
 	github.com/manifoldco/promptui v0.9.0
@@ -15,6 +16,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/crypto v0.37.0
+	golang.org/x/sync v0.13.0
 	golang.org/x/term v0.31.0
 )
 

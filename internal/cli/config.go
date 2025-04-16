@@ -186,3 +186,18 @@ func (c UpdateLeavesConfig) Validate() error {
 
 	return nil
 }
+
+type ResolveBaseConfig struct {
+	DefaultDir string
+	Os         string
+	Tag        string
+	Arch       string
+}
+
+func (c ResolveBaseConfig) Validate() error {
+	if c.DefaultDir == "" {
+		return errors.New("a default directory must be provided")
+	}
+
+	return nil
+}

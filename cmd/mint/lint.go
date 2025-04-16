@@ -1,17 +1,17 @@
 package main
 
 import (
-	"errors"
 	"slices"
 
 	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/cli"
+	"github.com/rwx-research/mint-cli/internal/errors"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	LintFailure = errors.New("lint failure")
+	LintFailure = errors.Wrap(HandledError, "lint failure")
 
 	LintMintDirectory    string
 	LintWarningsAsErrors bool

@@ -70,4 +70,5 @@ func init() {
 	rootCmd.AddCommand(vaultsCmd)
 	rootCmd.AddCommand(leavesCmd)
 	rootCmd.AddCommand(lintCmd)
+	rootCmd.AddCommand(resolveCmd)
 }

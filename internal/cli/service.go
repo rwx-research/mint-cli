@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,8 +24,12 @@ import (
 	"github.com/rwx-research/mint-cli/internal/versions"
 
 	"github.com/briandowns/spinner"
+	"github.com/goccy/go-yaml"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/sync/errgroup"
 )
+
+var HandledError = errors.New("handled error")
 
 // Service holds the main business logic of the CLI.
 type Service struct {
@@ -55,17 +62,17 @@ func (s Service) DebugTask(cfg DebugTaskConfig) error {
 
 	privateUserKey, err := ssh.ParsePrivateKey([]byte(connectionInfo.PrivateUserKey))
 	if err != nil {
-		return errors.Wrapf(err, "unable to parse key material retrieved from Cloud API")
+		return errors.Wrap(err, "unable to parse key material retrieved from Cloud API")
 	}
 
 	rawPublicHostKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(connectionInfo.PublicHostKey))
 	if err != nil {
-		return errors.Wrapf(err, "unable to parse host key retrieved from Cloud API")
+		return errors.Wrap(err, "unable to parse host key retrieved from Cloud API")
 	}
 
 	publicHostKey, err := ssh.ParsePublicKey(rawPublicHostKey.Marshal())
 	if err != nil {
-		return errors.Wrapf(err, "unable to parse host key retrieved from Cloud API")
+		return errors.Wrap(err, "unable to parse host key retrieved from Cloud API")
 	}
 
 	sshConfig := ssh.ClientConfig{
@@ -211,7 +218,7 @@ func (s Service) GetDispatch(cfg GetDispatchConfig) ([]GetDispatchRun, error) {
 
 	runs := make([]GetDispatchRun, len(dispatchResult.Runs))
 	for i, run := range dispatchResult.Runs {
-		runs[i] = GetDispatchRun{RunId:  run.RunId, RunUrl: run.RunUrl}
+		runs[i] = GetDispatchRun{RunId: run.RunId, RunUrl: run.RunUrl}
 	}
 
 	return runs, nil
@@ -661,6 +668,358 @@ func (s Service) findLeafReferences(files []string) (map[string]map[string][]str
 	}
 
 	return matches, nil
+}
+
+type baseLayerSpec struct {
+	Os   string `yaml:"os"`
+	Tag  string `yaml:"tag"`
+	Arch string `yaml:"arch"`
+}
+
+func (b baseLayerSpec) Merge(other baseLayerSpec) baseLayerSpec {
+	os := b.Os
+	if other.Os != "" {
+		os = other.Os
+	}
+
+	tag := b.Tag
+	if other.Tag != "" {
+		tag = other.Tag
+	}
+
+	arch := b.Arch
+	if other.Arch != "" {
+		arch = other.Arch
+	}
+
+	return baseLayerSpec{
+		Os:   os,
+		Tag:  tag,
+		Arch: arch,
+	}
+}
+
+type baseLayerRunFile struct {
+	Spec     baseLayerSpec
+	Filepath string
+	Error    error
+	Updated  bool
+}
+
+var reTasks = regexp.MustCompile(`(?m)^tasks:`)
+var ResolveBaseError = errors.Wrap(HandledError, "failed to update some files")
+
+func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
+	err := cfg.Validate()
+	if err != nil {
+		return errors.Wrap(err, "validation failed")
+	}
+
+	runFiles := make([]baseLayerRunFile, 0)
+	mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
+	if err != nil {
+		return err
+	}
+
+	yamlFiles := s.yamlFilesInMintDirectory(mintDirectory)
+	if len(yamlFiles) == 0 {
+		return fmt.Errorf("no files found in mint directory %q", cfg.DefaultDir)
+	}
+
+	requestedSpec := baseLayerSpec{
+		Os:   cfg.Os,
+		Tag:  cfg.Tag,
+		Arch: cfg.Arch,
+	}
+
+	for _, entry := range yamlFiles {
+		content, err := os.ReadFile(entry.OriginalPath)
+		if err != nil {
+			return err
+		}
+
+		parsed := struct {
+			Base baseLayerSpec `yaml:"base"`
+		}{}
+		if err = yaml.Unmarshal(content, &parsed); err == nil {
+			// Skip any files that already define a 'base' with at least 'os' and 'tag'
+			if parsed.Base.Os != "" && parsed.Base.Tag != "" {
+				continue
+			}
+		}
+
+		// Skip files that don't have a 'tasks' key
+		if !reTasks.Match(content) {
+			continue
+		}
+
+		runFiles = append(runFiles, baseLayerRunFile{
+			Spec:     requestedSpec.Merge(parsed.Base),
+			Filepath: entry.OriginalPath,
+		})
+	}
+
+	if len(runFiles) == 0 {
+		fmt.Fprintln(s.Stdout, "No run files need to be updated.")
+		return nil
+	}
+
+	specToResolved, err := s.resolveBaseSpecs(runFiles)
+	if err != nil {
+		return errors.Wrap(err, "unable to resolve base specs")
+	}
+	s.outputLatestVersionMessage()
+
+	// Inject base config in file
+	erroredRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
+	updatedRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
+	for _, runFile := range runFiles {
+		err := s.writeRunFileWithBase(runFile, specToResolved)
+		if err != nil {
+			runFile.Error = err
+			erroredRunFiles = append(erroredRunFiles, runFile)
+		} else {
+			runFile.Updated = true
+			updatedRunFiles = append(updatedRunFiles, runFile)
+		}
+	}
+
+	pluralizeFiles := func(files []baseLayerRunFile) string {
+		if len(files) == 1 {
+			return "1 file"
+		}
+		return fmt.Sprintf("%d files", len(files))
+	}
+
+	if len(runFiles) == 0 {
+		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
+	} else if len(updatedRunFiles) == 0 && len(erroredRunFiles) == 0 {
+		fmt.Fprintln(s.Stdout, "No run files needed to be updated.")
+	} else {
+		if len(updatedRunFiles) > 0 {
+			fmt.Fprintf(s.Stdout, "Updated %s:\n", pluralizeFiles(updatedRunFiles))
+			for _, runFile := range updatedRunFiles {
+				fmt.Fprintf(s.Stdout, "%s\n", runFile.Filepath)
+			}
+			if len(erroredRunFiles) > 0 {
+				fmt.Fprintln(s.Stdout)
+			}
+		}
+
+		if len(erroredRunFiles) > 0 {
+			fmt.Fprintf(s.Stdout, "Failed to update %s:\n", pluralizeFiles(erroredRunFiles))
+			for _, runFile := range erroredRunFiles {
+				fmt.Fprintf(s.Stdout, "%s → %s\n", runFile.Filepath, runFile.Error)
+			}
+		}
+	}
+
+	if len(erroredRunFiles) > 0 {
+		return ResolveBaseError
+	}
+
+	return nil
+}
+
+func (s Service) resolveBaseSpecs(runFiles []baseLayerRunFile) (map[baseLayerSpec]baseLayerSpec, error) {
+	// Get unique base layer specs to resolve from the server.
+	specToResolved := make(map[baseLayerSpec]baseLayerSpec)
+	for _, runFile := range runFiles {
+		specToResolved[runFile.Spec] = runFile.Spec
+	}
+
+	errs, _ := errgroup.WithContext(context.Background())
+	errs.SetLimit(3)
+
+	for spec := range specToResolved {
+		errs.Go(func() error {
+			resolvedSpec, err := s.APIClient.ResolveBaseLayer(api.ResolveBaseLayerConfig{
+				Os:   spec.Os,
+				Arch: spec.Arch,
+				Tag:  spec.Tag,
+			})
+			if err != nil {
+				return errors.Wrap(err, fmt.Sprintf("unable to resolve base layer %+v", spec))
+			}
+
+			specToResolved[spec] = baseLayerSpec{
+				Os:   resolvedSpec.Os,
+				Tag:  resolvedSpec.Tag,
+				Arch: resolvedSpec.Arch,
+			}
+			return nil
+		})
+	}
+
+	if err := errs.Wait(); err != nil {
+		return nil, err
+	}
+
+	return specToResolved, nil
+}
+
+func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, error) {
+	scanner := bufio.NewScanner(bytes.NewReader(input))
+	var lines []string
+	tasksLineIndex := -1 // 0-based index of the root 'tasks:' line
+	baseStartIndex := -1 // 0-based index of the root 'base:' line
+
+	// Read all lines to find root 'tasks:' and 'base:' indices
+	lineIdx := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		lines = append(lines, line)
+
+		// Check if the line is a root key (no leading whitespace)
+		trimmedLine := strings.TrimLeft(line, " \t")
+		isRootKey := len(trimmedLine) > 0 && trimmedLine == line
+
+		if isRootKey {
+			if line == "tasks:" && tasksLineIndex == -1 {
+				tasksLineIndex = lineIdx
+			}
+			if line == "base:" && baseStartIndex == -1 {
+				baseStartIndex = lineIdx
+			}
+		}
+		lineIdx++
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error scanning input data: %w", err)
+	}
+
+	// Ensure the root 'tasks:' key was found
+	if tasksLineIndex == -1 {
+		if len(lines) == 0 {
+			return nil, fmt.Errorf("input is empty, required 'tasks:' key not found")
+		}
+		return nil, fmt.Errorf("root 'tasks:' key not found in input YAML")
+	}
+
+	// If there is already a 'base' block, find the end of it.
+	// If 'arch' is already there, keep the entire line (eg. trailing comments).
+	existingArchLine := ""
+	baseEndIndex := -1 // Index of the line after the base block
+
+	if baseStartIndex != -1 {
+		// Find the end of the base block and look for 'arch' within it
+		baseEndIndex = len(lines) // Default if base is the last element in the file
+		for i := baseStartIndex + 1; i < len(lines); i++ {
+			line := lines[i]
+
+			// A root base block ends when a line is encountered that is not indented.
+			// An empty line does not necessarily end the block.
+			if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+				baseEndIndex = i
+				break
+			}
+
+			// Look for the 'arch' key within the block
+			trimmedLine := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmedLine, "arch:") {
+				// Verify it's likely a direct key under base:
+				// It must start with whitespace, and 'arch:' must follow that whitespace.
+				if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+					// Find where 'arch:' starts
+					archIndex := strings.Index(line, "arch:")
+					if archIndex > 0 {
+						// Check if the part before 'arch:' is only whitespace
+						if strings.TrimSpace(line[:archIndex]) == "" {
+							existingArchLine = line // Preserve original line with indentation
+							// Continue searching until baseEndIndex is determined accurately
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Construct the lines for the new/updated base block.
+	// We always add os and tag using standard two-space ("  ") indentation.
+	// If an original arch line was found, we append it to the new block.
+	newBaseLines := []string{"base:", fmt.Sprintf("  os: %s", base.Os), fmt.Sprintf("  tag: %s", base.Tag)}
+	if existingArchLine != "" {
+		newBaseLines = append(newBaseLines, existingArchLine)
+	} else if base.Arch != "" && base.Arch != "x86_64" {
+		newBaseLines = append(newBaseLines, fmt.Sprintf("  arch: %s", base.Arch))
+	}
+	newBaseLines = append(newBaseLines, "")
+
+	var outputLines []string
+
+	if baseStartIndex != -1 {
+		// Base exists: Replace the old base block range with the new lines
+		if baseStartIndex > 0 {
+			outputLines = append(outputLines, lines[0:baseStartIndex]...)
+		}
+
+		outputLines = append(outputLines, newBaseLines...)
+
+		if baseEndIndex < len(lines) {
+			outputLines = append(outputLines, lines[baseEndIndex:]...)
+		}
+	} else {
+		// Base doesn't exist: Insert new base block before the 'tasks' block
+		if tasksLineIndex > 0 {
+			outputLines = append(outputLines, lines[0:tasksLineIndex]...)
+		}
+
+		outputLines = append(outputLines, newBaseLines...)
+		outputLines = append(outputLines, lines[tasksLineIndex:]...)
+	}
+
+	finalOutput := strings.Join(outputLines, "\n")
+
+	// Add a trailing newline if the original data had content
+	if len(input) > 0 && len(finalOutput) > 0 && !strings.HasSuffix(finalOutput, "\n") {
+		finalOutput += "\n"
+	}
+
+	return []byte(finalOutput), nil
+}
+
+func (s Service) writeRunFileWithBase(runFile baseLayerRunFile, specToResolved map[baseLayerSpec]baseLayerSpec) error {
+	resolvedBase := specToResolved[runFile.Spec]
+	if (baseLayerSpec{}) == resolvedBase {
+		return fmt.Errorf("unable to resolve base spec %+v", runFile.Spec)
+	}
+
+	fi, err := os.Stat(runFile.Filepath)
+	if err != nil {
+		return fmt.Errorf("error getting file info for %q: %w", runFile.Filepath, err)
+	}
+
+	fileMode := fi.Mode()
+	file, err := os.OpenFile(runFile.Filepath, os.O_RDWR|os.O_CREATE, fileMode)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return err
+	}
+
+	newContent, err := s.ensureBaseSection(content, resolvedBase)
+	if err != nil {
+		return err
+	}
+
+	if bytes.Equal(content, newContent) {
+		return nil
+	}
+
+	if err = file.Truncate(0); err != nil {
+		return err
+	}
+
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	_, err = file.Write(newContent)
+	return err
 }
 
 func (s Service) replaceInFiles(files []string, replacements map[string]string) error {

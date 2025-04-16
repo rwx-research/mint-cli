@@ -4,7 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/rwx-research/mint-cli/internal/cli"
 )
+
+// A HandledError has already been handled in the called function,
+// but should return a non-zero exit code.
+var HandledError = cli.HandledError
 
 func main() {
 	err := rootCmd.Execute()
@@ -12,7 +18,7 @@ func main() {
 		return
 	}
 
-	if !errors.Is(err, LintFailure) {
+	if !errors.Is(err, HandledError) {
 		if Debug {
 			// Enabling debug output will print stacktraces
 			fmt.Fprintf(os.Stderr, "Error: %+v\n", err)

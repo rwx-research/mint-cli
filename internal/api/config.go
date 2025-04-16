@@ -206,3 +206,12 @@ type LeafVersionsResult struct {
 	LatestMajor map[string]string            `json:"latest_major"`
 	LatestMinor map[string]map[string]string `json:"latest_minor"`
 }
+
+type resolveBaseLayerSpec struct {
+	Os string `json:"os,omitempty"`
+	Tag string `json:"tag,omitempty"`
+	Arch string `json:"arch,omitempty"`
+}
+
+type ResolveBaseLayerConfig = resolveBaseLayerSpec
+type ResolveBaseLayerResult = resolveBaseLayerSpec
