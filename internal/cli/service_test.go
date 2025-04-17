@@ -1766,6 +1766,34 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 		})
 
+		Context("when yaml file is actually json", func() {
+			var mintDir string
+
+			BeforeEach(func() {
+				var err error
+
+				mintDir = tmp
+
+				err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`{
+"tasks": [
+  { "key": "a" },
+  { "key": "b" }
+]
+}`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("ignores the file", func() {
+				err := service.ResolveBase(cli.ResolveBaseConfig{
+					DefaultDir: mintDir,
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(mockStderr.String()).To(Equal(""))
+				Expect(mockStdout.String()).To(ContainSubstring("No run files found"))
+			})
+		})
+
 		Context("when yaml file doesn't include base", func() {
 			var mintDir string
 
