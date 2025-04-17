@@ -336,7 +336,7 @@ var _ = Describe("CLI Service", func() {
 				})
 
 				It("prints a warning", func() {
-					Expect(mockStderr.String()).To(ContainSubstring("WARNING: The file at \"mint.yml\" has been modified to include a \"base\" field. This field will be required in the future.\nFor more information, see the documentation at https://www.rwx.com/docs/mint/base\n"))
+					Expect(mockStderr.String()).To(ContainSubstring("Configured \"mint.yml\" to run on ubuntu 24.04\n"))
 				})
 			})
 		})

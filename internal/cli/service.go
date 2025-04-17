@@ -157,12 +157,14 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	}
 
 	if addBaseIfNeeded.HasChanges() {
-		fmt.Fprintf(s.Stderr, `WARNING: The file at %q has been modified to include a "base" field. This field will be required in the future.
-For more information, see the documentation at https://www.rwx.com/docs/mint/base
+		update := addBaseIfNeeded.UpdatedRunFiles[0]
+		if update.ResolvedBase.Os == "" {
+			return nil, errors.New("unable to determine OS")
+		}
 
-`, taskDefinitionYamlPath)
+		fmt.Fprintf(s.Stderr, "Configured %q to run on %s\n\n", taskDefinitionYamlPath, update.ResolvedBase.Os)
 
-		// Reload task definitions after modifying the file
+		// Reload run definitions after modifying the file
 		taskDefinitions, err = s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to read provided files")
@@ -721,10 +723,11 @@ func (b baseLayerSpec) Merge(other baseLayerSpec) baseLayerSpec {
 }
 
 type baseLayerRunFile struct {
-	Spec     baseLayerSpec
-	Filepath string
-	Error    error
-	Updated  bool
+	Spec         baseLayerSpec
+	ResolvedBase baseLayerSpec
+	Filepath     string
+	Error        error
+	Updated      bool
 }
 
 type resolveBaseResult struct {
@@ -847,7 +850,13 @@ func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, request
 	erroredRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
 	updatedRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
 	for _, runFile := range runFiles {
-		err := s.writeRunFileWithBase(runFile, specToResolved)
+		resolvedBase := specToResolved[runFile.Spec]
+		if (baseLayerSpec{}) == resolvedBase {
+			return resolveBaseResult{}, fmt.Errorf("unable to resolve base spec %+v", runFile.Spec)
+		}
+		runFile.ResolvedBase = resolvedBase
+
+		err := s.writeRunFileWithBase(runFile, resolvedBase)
 		if err != nil {
 			runFile.Error = err
 			erroredRunFiles = append(erroredRunFiles, runFile)
@@ -1021,12 +1030,7 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 	return []byte(finalOutput), nil
 }
 
-func (s Service) writeRunFileWithBase(runFile baseLayerRunFile, specToResolved map[baseLayerSpec]baseLayerSpec) error {
-	resolvedBase := specToResolved[runFile.Spec]
-	if (baseLayerSpec{}) == resolvedBase {
-		return fmt.Errorf("unable to resolve base spec %+v", runFile.Spec)
-	}
-
+func (s Service) writeRunFileWithBase(runFile baseLayerRunFile, resolvedBase baseLayerSpec) error {
 	fi, err := os.Stat(runFile.Filepath)
 	if err != nil {
 		return fmt.Errorf("error getting file info for %q: %w", runFile.Filepath, err)
