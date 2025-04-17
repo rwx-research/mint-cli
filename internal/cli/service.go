@@ -167,7 +167,15 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		// Reload run definitions after modifying the file
 		taskDefinitions, err = s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
 		if err != nil {
-			return nil, errors.Wrap(err, "unable to read provided files")
+			return nil, errors.Wrapf(err, "unable to reload %q", taskDefinitionYamlPath)
+		}
+		if mintDirectoryPath != "" {
+			mintDirectoryEntries, err := s.mintDirectoryEntries(mintDirectoryPath)
+			if err != nil && !errors.Is(err, errors.ErrFileNotExists) {
+				return nil, errors.Wrapf(err, "unable to reload mint directory %q", mintDirectoryPath)
+			}
+
+			mintDirectory = mintDirectoryEntries
 		}
 	}
 
@@ -416,7 +424,6 @@ func outputLintOneLine(w io.Writer, lintedFiles []api.LintProblem) error {
 	return nil
 }
 
-// InitiateRun will connect to the Cloud API and start a new run in Mint.
 func (s Service) Login(cfg LoginConfig) error {
 	err := cfg.Validate()
 	if err != nil {
