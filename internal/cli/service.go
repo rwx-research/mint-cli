@@ -167,7 +167,15 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		// Reload run definitions after modifying the file
 		taskDefinitions, err = s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
 		if err != nil {
-			return nil, errors.Wrap(err, "unable to read provided files")
+			return nil, errors.Wrapf(err, "unable to reload %q", taskDefinitionYamlPath)
+		}
+		if mintDirectoryPath != "" {
+			mintDirectoryEntries, err := s.mintDirectoryEntries(mintDirectoryPath)
+			if err != nil && !errors.Is(err, errors.ErrFileNotExists) {
+				return nil, errors.Wrapf(err, "unable to reload mint directory %q", mintDirectoryPath)
+			}
+
+			mintDirectory = mintDirectoryEntries
 		}
 	}
 
@@ -416,7 +424,6 @@ func outputLintOneLine(w io.Writer, lintedFiles []api.LintProblem) error {
 	return nil
 }
 
-// InitiateRun will connect to the Cloud API and start a new run in Mint.
 func (s Service) Login(cfg LoginConfig) error {
 	err := cfg.Validate()
 	if err != nil {
@@ -733,7 +740,6 @@ type baseLayerRunFile struct {
 type resolveBaseResult struct {
 	ErroredRunFiles []baseLayerRunFile
 	UpdatedRunFiles []baseLayerRunFile
-	NoRunFilesFound bool
 }
 
 func (r resolveBaseResult) HasChanges() bool {
@@ -778,7 +784,7 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		return fmt.Sprintf("%d files", len(files))
 	}
 
-	if result.NoRunFilesFound {
+	if len(yamlFiles) == 0 {
 		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
 	} else if !result.HasChanges() {
 		fmt.Fprintln(s.Stdout, "No run files needed to be updated.")
@@ -838,7 +844,7 @@ func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, request
 	}
 
 	if len(runFiles) == 0 {
-		return resolveBaseResult{NoRunFilesFound: true}, nil
+		return resolveBaseResult{}, nil
 	}
 
 	specToResolved, err := s.resolveBaseSpecs(runFiles)
@@ -869,7 +875,6 @@ func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, request
 	return resolveBaseResult{
 		ErroredRunFiles: erroredRunFiles,
 		UpdatedRunFiles: updatedRunFiles,
-		NoRunFilesFound: len(runFiles) == 0,
 	}, nil
 }
 

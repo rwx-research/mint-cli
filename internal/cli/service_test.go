@@ -288,36 +288,36 @@ var _ = Describe("CLI Service", func() {
 			Context("when 'base' is missing", func() {
 				var originalSpecifiedFileContent string
 				var receivedSpecifiedFileContent string
+				var receivedMintDirectoryFileContent string
 
 				BeforeEach(func() {
 					originalSpecifiedFileContent = "tasks:\n  - key: foo\n    run: echo 'bar'\n"
 
 					var err error
 
-					workingDir := filepath.Join(tmp, "some", "path", "to", "working", "directory")
-					err = os.MkdirAll(workingDir, 0o755)
+					mintDir := filepath.Join(tmp, ".mint")
+					err = os.MkdirAll(mintDir, 0o755)
 					Expect(err).NotTo(HaveOccurred())
 
-					err = os.Chdir(workingDir)
+					err = os.WriteFile(filepath.Join(mintDir, "foo.yml"), []byte(originalSpecifiedFileContent), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
-					err = os.WriteFile(filepath.Join(workingDir, "mint.yml"), []byte(originalSpecifiedFileContent), 0o644)
-					Expect(err).NotTo(HaveOccurred())
-
-					runConfig.MintFilePath = "mint.yml"
-					runConfig.MintDirectory = ""
+					runConfig.MintFilePath = ".mint/foo.yml"
+					runConfig.MintDirectory = ".mint"
 
 					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
 						Expect(cfg.TaskDefinitions).To(HaveLen(1))
 						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
-						Expect(cfg.MintDirectory).To(HaveLen(0))
+						Expect(cfg.MintDirectory).To(HaveLen(2))
 						Expect(cfg.UseCache).To(BeTrue())
 						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
+						receivedMintDirectoryFileContent = cfg.MintDirectory[1].FileContents
+
 						return &api.InitiateRunResult{
 							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
 							TargetedTaskKeys: []string{},
-							DefinitionPath:   ".mint/mint.yml",
+							DefinitionPath:   ".mint/foo.yml",
 						}, nil
 					}
 				})
@@ -335,8 +335,12 @@ var _ = Describe("CLI Service", func() {
 					Expect(receivedSpecifiedFileContent).To(Equal(fmt.Sprintf("%s\n%s", baseSpec, originalSpecifiedFileContent)))
 				})
 
+				It("passes the updated file content in the mint directory artifact", func() {
+					Expect(receivedMintDirectoryFileContent).To(Equal(fmt.Sprintf("%s\n%s", baseSpec, originalSpecifiedFileContent)))
+				})
+
 				It("prints a warning", func() {
-					Expect(mockStderr.String()).To(ContainSubstring("Configured \"mint.yml\" to run on ubuntu 24.04\n"))
+					Expect(mockStderr.String()).To(ContainSubstring("Configured \".mint/foo.yml\" to run on ubuntu 24.04\n"))
 				})
 			})
 		})
@@ -1790,7 +1794,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(mockStderr.String()).To(Equal(""))
-				Expect(mockStdout.String()).To(ContainSubstring("No run files found"))
+				Expect(mockStdout.String()).To(ContainSubstring("No run files needed to be updated"))
 			})
 		})
 
