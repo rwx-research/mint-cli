@@ -147,7 +147,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		return nil, errors.Wrap(err, "unable to read provided files")
 	}
 	if len(taskDefinitions) != 1 {
-		return nil, fmt.Errorf("Expected exactly 1 task definition, got %d", len(taskDefinitions))
+		return nil, fmt.Errorf("Expected exactly 1 run definition, got %d", len(taskDefinitions))
 	}
 
 	addBaseIfNeeded, err := s.resolveBaseForFiles(taskDefinitions, baseLayerSpec{})
@@ -157,7 +157,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	}
 
 	if addBaseIfNeeded.HasChanges() {
-		fmt.Fprintf(s.Stderr, `WARNING: The file at %q has been modified to include a "base" block. This block will be required in the future.
+		fmt.Fprintf(s.Stderr, `WARNING: The file at %q has been modified to include a "base" field. This field will be required in the future.
 For more information, see the documentation at https://www.rwx.com/docs/mint/base
 
 `, taskDefinitionYamlPath)
@@ -939,25 +939,25 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 		return nil, fmt.Errorf("root 'tasks:' key not found in input YAML")
 	}
 
-	// If there is already a 'base' block, find the end of it.
+	// If there is already a 'base' field, find the end of it.
 	// If 'arch' is already there, keep the entire line (eg. trailing comments).
 	existingArchLine := ""
-	baseEndIndex := -1 // Index of the line after the base block
+	baseEndIndex := -1 // Index of the line after the base field
 
 	if baseStartIndex != -1 {
-		// Find the end of the base block and look for 'arch' within it
+		// Find the end of the base field and look for 'arch' within it
 		baseEndIndex = len(lines) // Default if base is the last element in the file
 		for i := baseStartIndex + 1; i < len(lines); i++ {
 			line := lines[i]
 
-			// A root base block ends when a line is encountered that is not indented.
-			// An empty line does not necessarily end the block.
+			// A root base field ends when a line is encountered that is not indented.
+			// An empty line does not necessarily end the field.
 			if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
 				baseEndIndex = i
 				break
 			}
 
-			// Look for the 'arch' key within the block
+			// Look for the 'arch' key within the field
 			trimmedLine := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmedLine, "arch:") {
 				// Verify it's likely a direct key under base:
@@ -977,9 +977,9 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 		}
 	}
 
-	// Construct the lines for the new/updated base block.
+	// Construct the lines for the new/updated base field.
 	// We always add os and tag using standard two-space ("  ") indentation.
-	// If an original arch line was found, we append it to the new block.
+	// If an original arch line was found, we append it to the new field.
 	newBaseLines := []string{"base:", fmt.Sprintf("  os: %s", base.Os), fmt.Sprintf("  tag: %s", base.Tag)}
 	if existingArchLine != "" {
 		newBaseLines = append(newBaseLines, existingArchLine)
@@ -991,7 +991,7 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 	var outputLines []string
 
 	if baseStartIndex != -1 {
-		// Base exists: Replace the old base block range with the new lines
+		// Base exists: Replace the old base field range with the new lines
 		if baseStartIndex > 0 {
 			outputLines = append(outputLines, lines[0:baseStartIndex]...)
 		}
@@ -1002,7 +1002,7 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 			outputLines = append(outputLines, lines[baseEndIndex:]...)
 		}
 	} else {
-		// Base doesn't exist: Insert new base block before the 'tasks' block
+		// Base doesn't exist: Insert new base field before the 'tasks' field
 		if tasksLineIndex > 0 {
 			outputLines = append(outputLines, lines[0:tasksLineIndex]...)
 		}
