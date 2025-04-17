@@ -1790,7 +1790,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(mockStderr.String()).To(Equal(""))
-				Expect(mockStdout.String()).To(ContainSubstring("No run files found"))
+				Expect(mockStdout.String()).To(ContainSubstring("No run files needed to be updated"))
 			})
 		})
 

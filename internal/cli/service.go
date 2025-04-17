@@ -733,7 +733,6 @@ type baseLayerRunFile struct {
 type resolveBaseResult struct {
 	ErroredRunFiles []baseLayerRunFile
 	UpdatedRunFiles []baseLayerRunFile
-	NoRunFilesFound bool
 }
 
 func (r resolveBaseResult) HasChanges() bool {
@@ -778,7 +777,7 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		return fmt.Sprintf("%d files", len(files))
 	}
 
-	if result.NoRunFilesFound {
+	if len(yamlFiles) == 0 {
 		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
 	} else if !result.HasChanges() {
 		fmt.Fprintln(s.Stdout, "No run files needed to be updated.")
@@ -838,7 +837,7 @@ func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, request
 	}
 
 	if len(runFiles) == 0 {
-		return resolveBaseResult{NoRunFilesFound: true}, nil
+		return resolveBaseResult{}, nil
 	}
 
 	specToResolved, err := s.resolveBaseSpecs(runFiles)
@@ -869,7 +868,6 @@ func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, request
 	return resolveBaseResult{
 		ErroredRunFiles: erroredRunFiles,
 		UpdatedRunFiles: updatedRunFiles,
-		NoRunFilesFound: len(runFiles) == 0,
 	}, nil
 }
 
