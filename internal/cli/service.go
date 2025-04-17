@@ -146,6 +146,30 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
 	}
+	if len(taskDefinitions) != 1 {
+		return nil, fmt.Errorf("Expected exactly 1 run definition, got %d", len(taskDefinitions))
+	}
+
+	addBaseIfNeeded, err := s.resolveBaseForFiles(taskDefinitions, baseLayerSpec{})
+	s.outputLatestVersionMessage()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to resolve base")
+	}
+
+	if addBaseIfNeeded.HasChanges() {
+		update := addBaseIfNeeded.UpdatedRunFiles[0]
+		if update.ResolvedBase.Os == "" {
+			return nil, errors.New("unable to determine OS")
+		}
+
+		fmt.Fprintf(s.Stderr, "Configured %q to run on %s\n\n", taskDefinitionYamlPath, update.ResolvedBase.Os)
+
+		// Reload run definitions after modifying the file
+		taskDefinitions, err = s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to read provided files")
+		}
+	}
 
 	i := 0
 	initializationParameters := make([]api.InitializationParameter, len(cfg.InitParameters))
@@ -165,7 +189,6 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		Title:                    cfg.Title,
 		UseCache:                 !cfg.NoCache,
 	})
-	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to initiate run")
 	}
@@ -700,10 +723,21 @@ func (b baseLayerSpec) Merge(other baseLayerSpec) baseLayerSpec {
 }
 
 type baseLayerRunFile struct {
-	Spec     baseLayerSpec
-	Filepath string
-	Error    error
-	Updated  bool
+	Spec         baseLayerSpec
+	ResolvedBase baseLayerSpec
+	Filepath     string
+	Error        error
+	Updated      bool
+}
+
+type resolveBaseResult struct {
+	ErroredRunFiles []baseLayerRunFile
+	UpdatedRunFiles []baseLayerRunFile
+	NoRunFilesFound bool
+}
+
+func (r resolveBaseResult) HasChanges() bool {
+	return len(r.ErroredRunFiles) > 0 || len(r.UpdatedRunFiles) > 0
 }
 
 var reTasks = regexp.MustCompile(`(?m)^tasks:`)
@@ -715,7 +749,6 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		return errors.Wrap(err, "validation failed")
 	}
 
-	runFiles := make([]baseLayerRunFile, 0)
 	mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
 	if err != nil {
 		return err
@@ -732,10 +765,55 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		Arch: cfg.Arch,
 	}
 
-	for _, entry := range yamlFiles {
+	result, err := s.resolveBaseForFiles(yamlFiles, requestedSpec)
+	s.outputLatestVersionMessage()
+	if err != nil {
+		return err
+	}
+
+	pluralizeFiles := func(files []baseLayerRunFile) string {
+		if len(files) == 1 {
+			return "1 file"
+		}
+		return fmt.Sprintf("%d files", len(files))
+	}
+
+	if result.NoRunFilesFound {
+		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
+	} else if !result.HasChanges() {
+		fmt.Fprintln(s.Stdout, "No run files needed to be updated.")
+	} else {
+		if len(result.UpdatedRunFiles) > 0 {
+			fmt.Fprintf(s.Stdout, "Updated %s:\n", pluralizeFiles(result.UpdatedRunFiles))
+			for _, runFile := range result.UpdatedRunFiles {
+				fmt.Fprintf(s.Stdout, "%s\n", runFile.Filepath)
+			}
+			if len(result.ErroredRunFiles) > 0 {
+				fmt.Fprintln(s.Stdout)
+			}
+		}
+
+		if len(result.ErroredRunFiles) > 0 {
+			fmt.Fprintf(s.Stdout, "Failed to update %s:\n", pluralizeFiles(result.ErroredRunFiles))
+			for _, runFile := range result.ErroredRunFiles {
+				fmt.Fprintf(s.Stdout, "%s → %s\n", runFile.Filepath, runFile.Error)
+			}
+		}
+	}
+
+	if len(result.ErroredRunFiles) > 0 {
+		return ResolveBaseError
+	}
+	return nil
+}
+
+func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, requestedSpec baseLayerSpec) (resolveBaseResult, error) {
+	runFiles := make([]baseLayerRunFile, 0)
+
+	for _, entry := range mintFiles {
 		content, err := os.ReadFile(entry.OriginalPath)
 		if err != nil {
-			return err
+			return resolveBaseResult{}, err
 		}
 
 		parsed := struct {
@@ -760,21 +838,25 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 	}
 
 	if len(runFiles) == 0 {
-		fmt.Fprintln(s.Stdout, "No run files need to be updated.")
-		return nil
+		return resolveBaseResult{NoRunFilesFound: true}, nil
 	}
 
 	specToResolved, err := s.resolveBaseSpecs(runFiles)
 	if err != nil {
-		return errors.Wrap(err, "unable to resolve base specs")
+		return resolveBaseResult{}, errors.Wrap(err, "unable to resolve base specs")
 	}
-	s.outputLatestVersionMessage()
 
 	// Inject base config in file
 	erroredRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
 	updatedRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
 	for _, runFile := range runFiles {
-		err := s.writeRunFileWithBase(runFile, specToResolved)
+		resolvedBase := specToResolved[runFile.Spec]
+		if (baseLayerSpec{}) == resolvedBase {
+			return resolveBaseResult{}, fmt.Errorf("unable to resolve base spec %+v", runFile.Spec)
+		}
+		runFile.ResolvedBase = resolvedBase
+
+		err := s.writeRunFileWithBase(runFile, resolvedBase)
 		if err != nil {
 			runFile.Error = err
 			erroredRunFiles = append(erroredRunFiles, runFile)
@@ -784,41 +866,11 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		}
 	}
 
-	pluralizeFiles := func(files []baseLayerRunFile) string {
-		if len(files) == 1 {
-			return "1 file"
-		}
-		return fmt.Sprintf("%d files", len(files))
-	}
-
-	if len(runFiles) == 0 {
-		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
-	} else if len(updatedRunFiles) == 0 && len(erroredRunFiles) == 0 {
-		fmt.Fprintln(s.Stdout, "No run files needed to be updated.")
-	} else {
-		if len(updatedRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Updated %s:\n", pluralizeFiles(updatedRunFiles))
-			for _, runFile := range updatedRunFiles {
-				fmt.Fprintf(s.Stdout, "%s\n", runFile.Filepath)
-			}
-			if len(erroredRunFiles) > 0 {
-				fmt.Fprintln(s.Stdout)
-			}
-		}
-
-		if len(erroredRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Failed to update %s:\n", pluralizeFiles(erroredRunFiles))
-			for _, runFile := range erroredRunFiles {
-				fmt.Fprintf(s.Stdout, "%s → %s\n", runFile.Filepath, runFile.Error)
-			}
-		}
-	}
-
-	if len(erroredRunFiles) > 0 {
-		return ResolveBaseError
-	}
-
-	return nil
+	return resolveBaseResult{
+		ErroredRunFiles: erroredRunFiles,
+		UpdatedRunFiles: updatedRunFiles,
+		NoRunFilesFound: len(runFiles) == 0,
+	}, nil
 }
 
 func (s Service) resolveBaseSpecs(runFiles []baseLayerRunFile) (map[baseLayerSpec]baseLayerSpec, error) {
@@ -896,25 +948,25 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 		return nil, fmt.Errorf("root 'tasks:' key not found in input YAML")
 	}
 
-	// If there is already a 'base' block, find the end of it.
+	// If there is already a 'base' field, find the end of it.
 	// If 'arch' is already there, keep the entire line (eg. trailing comments).
 	existingArchLine := ""
-	baseEndIndex := -1 // Index of the line after the base block
+	baseEndIndex := -1 // Index of the line after the base field
 
 	if baseStartIndex != -1 {
-		// Find the end of the base block and look for 'arch' within it
+		// Find the end of the base field and look for 'arch' within it
 		baseEndIndex = len(lines) // Default if base is the last element in the file
 		for i := baseStartIndex + 1; i < len(lines); i++ {
 			line := lines[i]
 
-			// A root base block ends when a line is encountered that is not indented.
-			// An empty line does not necessarily end the block.
+			// A root base field ends when a line is encountered that is not indented.
+			// An empty line does not necessarily end the field.
 			if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
 				baseEndIndex = i
 				break
 			}
 
-			// Look for the 'arch' key within the block
+			// Look for the 'arch' key within the field
 			trimmedLine := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmedLine, "arch:") {
 				// Verify it's likely a direct key under base:
@@ -934,9 +986,9 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 		}
 	}
 
-	// Construct the lines for the new/updated base block.
+	// Construct the lines for the new/updated base field.
 	// We always add os and tag using standard two-space ("  ") indentation.
-	// If an original arch line was found, we append it to the new block.
+	// If an original arch line was found, we append it to the new field.
 	newBaseLines := []string{"base:", fmt.Sprintf("  os: %s", base.Os), fmt.Sprintf("  tag: %s", base.Tag)}
 	if existingArchLine != "" {
 		newBaseLines = append(newBaseLines, existingArchLine)
@@ -948,7 +1000,7 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 	var outputLines []string
 
 	if baseStartIndex != -1 {
-		// Base exists: Replace the old base block range with the new lines
+		// Base exists: Replace the old base field range with the new lines
 		if baseStartIndex > 0 {
 			outputLines = append(outputLines, lines[0:baseStartIndex]...)
 		}
@@ -959,7 +1011,7 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 			outputLines = append(outputLines, lines[baseEndIndex:]...)
 		}
 	} else {
-		// Base doesn't exist: Insert new base block before the 'tasks' block
+		// Base doesn't exist: Insert new base field before the 'tasks' field
 		if tasksLineIndex > 0 {
 			outputLines = append(outputLines, lines[0:tasksLineIndex]...)
 		}
@@ -978,12 +1030,7 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 	return []byte(finalOutput), nil
 }
 
-func (s Service) writeRunFileWithBase(runFile baseLayerRunFile, specToResolved map[baseLayerSpec]baseLayerSpec) error {
-	resolvedBase := specToResolved[runFile.Spec]
-	if (baseLayerSpec{}) == resolvedBase {
-		return fmt.Errorf("unable to resolve base spec %+v", runFile.Spec)
-	}
-
+func (s Service) writeRunFileWithBase(runFile baseLayerRunFile, resolvedBase baseLayerSpec) error {
 	fi, err := os.Stat(runFile.Filepath)
 	if err != nil {
 		return fmt.Errorf("error getting file info for %q: %w", runFile.Filepath, err)
