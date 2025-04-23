@@ -1,13 +1,33 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/rwx-research/mint-cli/internal/cli"
 	"github.com/spf13/cobra"
 )
 
 var resolveCmd = &cobra.Command{
-	Short: "Manage base layers and Mint leaves",
+	Short: "Resolve and add versions for base layers and Mint leaves",
 	Use:   "resolve",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		base, err := service.ResolveBase(cli.ResolveBaseConfig{
+			DefaultDir: ".mint",
+		})
+		if err != nil {
+			return err
+		}
+		if base.HasChanges() {
+			fmt.Println()
+		}
+
+		_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
+			DefaultDir:          ".mint",
+			LatestVersionPicker: cli.PickLatestMajorVersion,
+		})
+
+		return err
+	},
 }
 
 var (
@@ -17,12 +37,13 @@ var (
 
 	resolveBaseCmd = &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return service.ResolveBase(cli.ResolveBaseConfig{
+			_, err := service.ResolveBase(cli.ResolveBaseConfig{
 				DefaultDir: ".mint",
 				Os:         resolveBaseOs,
 				Tag:        resolveBaseTag,
 				Arch:       resolveBaseArch,
 			})
+			return err
 		},
 		Short: "Add a base layer to Mint run configurations that do not have one",
 		Long: "Add a base layer to Mint run configurations that do not have one.\n" +
@@ -35,7 +56,7 @@ var (
 	resolveLeavesCmd = &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-				DefaultDir: ".mint",
+				DefaultDir:          ".mint",
 				LatestVersionPicker: cli.PickLatestMajorVersion,
 			})
 			return err

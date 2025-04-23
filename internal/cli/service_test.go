@@ -285,7 +285,7 @@ var _ = Describe("CLI Service", func() {
 				})
 			})
 
-			Context("when 'base' is missing", func() {
+			Context("when base is missing", func() {
 				var originalSpecifiedFileContent string
 				var receivedSpecifiedFileContent string
 				var receivedMintDirectoryFileContent string
@@ -1863,7 +1863,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					var err error
 
 					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
-						Files:               []string{filepath.Join(tmp, "foo.yaml")},
+						DefaultDir:          tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 					Expect(err).NotTo(HaveOccurred())
@@ -1879,7 +1879,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates no leaves were resolved", func() {
 					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-						Files:               []string{filepath.Join(tmp, "foo.yaml")},
+						DefaultDir:          tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1919,7 +1919,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					var err error
 
 					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
-						Files:               []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
+						DefaultDir:          tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 					Expect(err).NotTo(HaveOccurred())
@@ -1949,7 +1949,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates leaves were resolved", func() {
 					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-						Files:               []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
+						DefaultDir:          tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1975,7 +1975,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					var err error
 
 					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
-						Files:               []string{filepath.Join(tmp, "foo.yaml")},
+						DefaultDir:          tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 					Expect(err).NotTo(HaveOccurred())
@@ -1991,7 +1991,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				It("indicates a leaf could not be found", func() {
 					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-						Files:               []string{filepath.Join(tmp, "foo.yaml")},
+						DefaultDir:          tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -2058,7 +2058,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 
 			It("returns an error", func() {
-				err := service.ResolveBase(cli.ResolveBaseConfig{
+				_, err := service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 
@@ -2085,13 +2085,13 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 
 			It("ignores the file", func() {
-				err := service.ResolveBase(cli.ResolveBaseConfig{
+				_, err := service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(mockStderr.String()).To(Equal(""))
-				Expect(mockStdout.String()).To(ContainSubstring("No run files needed to be updated"))
+				Expect(mockStdout.String()).To(ContainSubstring("No run files were missing base"))
 			})
 		})
 
@@ -2122,7 +2122,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			It("adds base to file", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 					Arch:       "quantum",
 				})
@@ -2142,9 +2142,10 @@ tasks:
   - key: b
 `))
 
-				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
-%s
-`, filepath.Join(mintDir, "bar.yaml"))))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					filepath.Join(mintDir, "bar.yaml"),
+				)))
 
 				// yaml file without tasks key is unaffected
 				contents, err = os.ReadFile(filepath.Join(mintDir, "baz.yaml"))
@@ -2181,7 +2182,7 @@ tasks:
 			It("adds tag to base", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -2203,9 +2204,10 @@ tasks:
   - key: b
 `))
 
-				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
-%s
-`, filepath.Join(mintDir, "ci.yaml"))))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					filepath.Join(mintDir, "ci.yaml"),
+				)))
 			})
 		})
 
@@ -2235,7 +2237,7 @@ tasks:
 			It("adds tag to base", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -2258,9 +2260,10 @@ tasks:
   - key: b
 `))
 
-				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
-%s
-`, filepath.Join(mintDir, "ci.yaml"))))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					filepath.Join(mintDir, "ci.yaml"),
+				)))
 			})
 		})
 
@@ -2288,7 +2291,7 @@ base:
 			It("adds tag to base without moving base before tasks", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -2310,9 +2313,10 @@ base:
   tag: 1.2
 `))
 
-				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
-%s
-`, filepath.Join(mintDir, "ci.yaml"))))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					filepath.Join(mintDir, "ci.yaml"),
+				)))
 			})
 		})
 
@@ -2348,7 +2352,7 @@ tasks:
 			It("updates all files", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 					Os:         "gentoo 99",
 				})
@@ -2389,7 +2393,7 @@ tasks:
   - key: f
 `))
 
-				Expect(mockStdout.String()).To(ContainSubstring("Updated 3 files:"))
+				Expect(mockStdout.String()).To(ContainSubstring("Added base to 3 files:"))
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "one.yaml")))
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "two.yaml")))
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "three.yaml")))
@@ -2411,7 +2415,7 @@ tasks:
 						return nil
 					}
 
-					err = service.ResolveBase(cli.ResolveBaseConfig{
+					_, err = service.ResolveBase(cli.ResolveBaseConfig{
 						DefaultDir: mintDir,
 					})
 					Expect(err).To(HaveOccurred())

@@ -202,10 +202,54 @@ func (c ResolveBaseConfig) Validate() error {
 	return nil
 }
 
+type BaseLayerSpec struct {
+	Os   string `yaml:"os"`
+	Tag  string `yaml:"tag"`
+	Arch string `yaml:"arch"`
+}
+
+func (b BaseLayerSpec) Merge(other BaseLayerSpec) BaseLayerSpec {
+	os := b.Os
+	if other.Os != "" {
+		os = other.Os
+	}
+
+	tag := b.Tag
+	if other.Tag != "" {
+		tag = other.Tag
+	}
+
+	arch := b.Arch
+	if other.Arch != "" {
+		arch = other.Arch
+	}
+
+	return BaseLayerSpec{
+		Os:   os,
+		Tag:  tag,
+		Arch: arch,
+	}
+}
+
+type BaseLayerRunFile struct {
+	Spec         BaseLayerSpec
+	ResolvedBase BaseLayerSpec
+	Filepath     string
+	Error        error
+	Updated      bool
+}
+
+type ResolveBaseResult struct {
+	ErroredRunFiles []BaseLayerRunFile
+	UpdatedRunFiles []BaseLayerRunFile
+}
+
+func (r ResolveBaseResult) HasChanges() bool {
+	return len(r.ErroredRunFiles) > 0 || len(r.UpdatedRunFiles) > 0
+}
+
 type ResolveLeavesConfig struct {
 	DefaultDir          string
-	Files               []string
-	Silent              bool
 	LatestVersionPicker func(versions api.LeafVersionsResult, leaf string, _ string) (string, error)
 }
 
@@ -214,8 +258,8 @@ func (c ResolveLeavesConfig) PickLatestVersion(versions api.LeafVersionsResult, 
 }
 
 func (c ResolveLeavesConfig) Validate() error {
-	if len(c.Files) == 0 && c.DefaultDir == "" {
-		return errors.New("a default directory must be provided if not specifying files explicitly")
+	if c.DefaultDir == "" {
+		return errors.New("a default directory must be provided")
 	}
 
 	if c.LatestVersionPicker == nil {

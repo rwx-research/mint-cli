@@ -150,7 +150,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		return nil, fmt.Errorf("Expected exactly 1 run definition, got %d", len(taskDefinitions))
 	}
 
-	addBaseIfNeeded, err := s.resolveBaseForFiles(taskDefinitions, baseLayerSpec{})
+	addBaseIfNeeded, err := s.resolveBaseForFiles(taskDefinitions, BaseLayerSpec{})
 	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to resolve base")
@@ -635,7 +635,7 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 		}
 	}
 
-	err = s.replaceInFiles(files, replacements)
+	err = s.replaceStringInFiles(files, replacements)
 	if err != nil {
 		return errors.Wrap(err, "unable to replace leaf references")
 	}
@@ -700,72 +700,25 @@ func (s Service) findLeafReferences(files []string) (map[string]map[string][]str
 	return matches, nil
 }
 
-type baseLayerSpec struct {
-	Os   string `yaml:"os"`
-	Tag  string `yaml:"tag"`
-	Arch string `yaml:"arch"`
-}
-
-func (b baseLayerSpec) Merge(other baseLayerSpec) baseLayerSpec {
-	os := b.Os
-	if other.Os != "" {
-		os = other.Os
-	}
-
-	tag := b.Tag
-	if other.Tag != "" {
-		tag = other.Tag
-	}
-
-	arch := b.Arch
-	if other.Arch != "" {
-		arch = other.Arch
-	}
-
-	return baseLayerSpec{
-		Os:   os,
-		Tag:  tag,
-		Arch: arch,
-	}
-}
-
-type baseLayerRunFile struct {
-	Spec         baseLayerSpec
-	ResolvedBase baseLayerSpec
-	Filepath     string
-	Error        error
-	Updated      bool
-}
-
-type resolveBaseResult struct {
-	ErroredRunFiles []baseLayerRunFile
-	UpdatedRunFiles []baseLayerRunFile
-}
-
-func (r resolveBaseResult) HasChanges() bool {
-	return len(r.ErroredRunFiles) > 0 || len(r.UpdatedRunFiles) > 0
-}
-
 var reTasks = regexp.MustCompile(`(?m)^tasks:`)
-var ResolveBaseError = errors.Wrap(HandledError, "failed to update some files")
 
-func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
+func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 	err := cfg.Validate()
 	if err != nil {
-		return errors.Wrap(err, "validation failed")
+		return ResolveBaseResult{}, errors.Wrap(err, "validation failed")
 	}
 
 	mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
 	if err != nil {
-		return err
+		return ResolveBaseResult{}, err
 	}
 
 	yamlFiles := s.yamlFilesInMintDirectory(mintDirectory)
 	if len(yamlFiles) == 0 {
-		return fmt.Errorf("no files found in mint directory %q", cfg.DefaultDir)
+		return ResolveBaseResult{}, fmt.Errorf("no files found in mint directory %q", cfg.DefaultDir)
 	}
 
-	requestedSpec := baseLayerSpec{
+	requestedSpec := BaseLayerSpec{
 		Os:   cfg.Os,
 		Tag:  cfg.Tag,
 		Arch: cfg.Arch,
@@ -774,10 +727,10 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 	result, err := s.resolveBaseForFiles(yamlFiles, requestedSpec)
 	s.outputLatestVersionMessage()
 	if err != nil {
-		return err
+		return ResolveBaseResult{}, err
 	}
 
-	pluralizeFiles := func(files []baseLayerRunFile) string {
+	pluralizeFiles := func(files []BaseLayerRunFile) string {
 		if len(files) == 1 {
 			return "1 file"
 		}
@@ -787,12 +740,12 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 	if len(yamlFiles) == 0 {
 		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
 	} else if !result.HasChanges() {
-		fmt.Fprintln(s.Stdout, "No run files needed to be updated.")
+		fmt.Fprintln(s.Stdout, "No run files were missing base.")
 	} else {
 		if len(result.UpdatedRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Updated %s:\n", pluralizeFiles(result.UpdatedRunFiles))
+			fmt.Fprintf(s.Stdout, "Added base to %s:\n", pluralizeFiles(result.UpdatedRunFiles))
 			for _, runFile := range result.UpdatedRunFiles {
-				fmt.Fprintf(s.Stdout, "%s\n", runFile.Filepath)
+				fmt.Fprintf(s.Stdout, "\t%s\n", runFile.Filepath)
 			}
 			if len(result.ErroredRunFiles) > 0 {
 				fmt.Fprintln(s.Stdout)
@@ -800,30 +753,27 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) error {
 		}
 
 		if len(result.ErroredRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Failed to update %s:\n", pluralizeFiles(result.ErroredRunFiles))
+			fmt.Fprintf(s.Stdout, "Failed to add base to %s:\n", pluralizeFiles(result.ErroredRunFiles))
 			for _, runFile := range result.ErroredRunFiles {
-				fmt.Fprintf(s.Stdout, "%s → %s\n", runFile.Filepath, runFile.Error)
+				fmt.Fprintf(s.Stdout, "\t%s → %s\n", runFile.Filepath, runFile.Error)
 			}
 		}
 	}
 
-	if len(result.ErroredRunFiles) > 0 {
-		return ResolveBaseError
-	}
-	return nil
+	return result, nil
 }
 
-func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, requestedSpec baseLayerSpec) (resolveBaseResult, error) {
-	runFiles := make([]baseLayerRunFile, 0)
+func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, requestedSpec BaseLayerSpec) (ResolveBaseResult, error) {
+	runFiles := make([]BaseLayerRunFile, 0)
 
 	for _, entry := range mintFiles {
 		content, err := os.ReadFile(entry.OriginalPath)
 		if err != nil {
-			return resolveBaseResult{}, err
+			return ResolveBaseResult{}, err
 		}
 
 		parsed := struct {
-			Base baseLayerSpec `yaml:"base"`
+			Base BaseLayerSpec `yaml:"base"`
 		}{}
 		if err = yaml.Unmarshal(content, &parsed); err == nil {
 			// Skip any files that already define a 'base' with at least 'os' and 'tag'
@@ -837,28 +787,28 @@ func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, request
 			continue
 		}
 
-		runFiles = append(runFiles, baseLayerRunFile{
+		runFiles = append(runFiles, BaseLayerRunFile{
 			Spec:     requestedSpec.Merge(parsed.Base),
 			Filepath: entry.OriginalPath,
 		})
 	}
 
 	if len(runFiles) == 0 {
-		return resolveBaseResult{}, nil
+		return ResolveBaseResult{}, nil
 	}
 
 	specToResolved, err := s.resolveBaseSpecs(runFiles)
 	if err != nil {
-		return resolveBaseResult{}, errors.Wrap(err, "unable to resolve base specs")
+		return ResolveBaseResult{}, errors.Wrap(err, "unable to resolve base specs")
 	}
 
 	// Inject base config in file
-	erroredRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
-	updatedRunFiles := make([]baseLayerRunFile, 0, len(runFiles))
+	erroredRunFiles := make([]BaseLayerRunFile, 0, len(runFiles))
+	updatedRunFiles := make([]BaseLayerRunFile, 0, len(runFiles))
 	for _, runFile := range runFiles {
 		resolvedBase := specToResolved[runFile.Spec]
-		if (baseLayerSpec{}) == resolvedBase {
-			return resolveBaseResult{}, fmt.Errorf("unable to resolve base spec %+v", runFile.Spec)
+		if (BaseLayerSpec{}) == resolvedBase {
+			return ResolveBaseResult{}, fmt.Errorf("unable to resolve base spec %+v", runFile.Spec)
 		}
 		runFile.ResolvedBase = resolvedBase
 
@@ -872,15 +822,15 @@ func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, request
 		}
 	}
 
-	return resolveBaseResult{
+	return ResolveBaseResult{
 		ErroredRunFiles: erroredRunFiles,
 		UpdatedRunFiles: updatedRunFiles,
 	}, nil
 }
 
-func (s Service) resolveBaseSpecs(runFiles []baseLayerRunFile) (map[baseLayerSpec]baseLayerSpec, error) {
+func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpec]BaseLayerSpec, error) {
 	// Get unique base layer specs to resolve from the server.
-	specToResolved := make(map[baseLayerSpec]baseLayerSpec)
+	specToResolved := make(map[BaseLayerSpec]BaseLayerSpec)
 	for _, runFile := range runFiles {
 		specToResolved[runFile.Spec] = runFile.Spec
 	}
@@ -899,7 +849,7 @@ func (s Service) resolveBaseSpecs(runFiles []baseLayerRunFile) (map[baseLayerSpe
 				return errors.Wrap(err, fmt.Sprintf("unable to resolve base layer %+v", spec))
 			}
 
-			specToResolved[spec] = baseLayerSpec{
+			specToResolved[spec] = BaseLayerSpec{
 				Os:   resolvedSpec.Os,
 				Tag:  resolvedSpec.Tag,
 				Arch: resolvedSpec.Arch,
@@ -915,7 +865,7 @@ func (s Service) resolveBaseSpecs(runFiles []baseLayerRunFile) (map[baseLayerSpe
 	return specToResolved, nil
 }
 
-func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, error) {
+func (s Service) ensureBaseSection(input []byte, base BaseLayerSpec) ([]byte, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(input))
 	var lines []string
 	tasksLineIndex := -1 // 0-based index of the root 'tasks:' line
@@ -1035,7 +985,7 @@ func (s Service) ensureBaseSection(input []byte, base baseLayerSpec) ([]byte, er
 	return []byte(finalOutput), nil
 }
 
-func (s Service) writeRunFileWithBase(runFile baseLayerRunFile, resolvedBase baseLayerSpec) error {
+func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile, resolvedBase BaseLayerSpec) error {
 	fi, err := os.Stat(runFile.Filepath)
 	if err != nil {
 		return fmt.Errorf("error getting file info for %q: %w", runFile.Filepath, err)
@@ -1075,31 +1025,42 @@ func (s Service) writeRunFileWithBase(runFile baseLayerRunFile, resolvedBase bas
 }
 
 func (s Service) ResolveLeaves(cfg ResolveLeavesConfig) (ResolveLeavesResult, error) {
-	var files []string
-
 	err := cfg.Validate()
 	if err != nil {
 		return ResolveLeavesResult{}, errors.Wrap(err, "validation failed")
 	}
 
-	if len(cfg.Files) > 0 {
-		files = cfg.Files
-	} else {
-		mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
-		if err != nil {
-			return ResolveLeavesResult{}, err
-		}
-
-		yamlFiles := make([]string, 0)
-		for _, entry := range s.yamlFilesInMintDirectory(mintDirectory) {
-			yamlFiles = append(yamlFiles, entry.OriginalPath)
-		}
-
-		files = yamlFiles
+	mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
+	if err != nil {
+		return ResolveLeavesResult{}, err
 	}
 
-	if len(files) == 0 {
+	mintFiles := s.yamlFilesInMintDirectory(mintDirectory)
+	result, err := s.resolveLeavesForFiles(mintFiles, cfg)
+	if err != nil {
+		return result, err
+	}
+
+	if len(result.ResolvedLeaves) == 0 {
+		fmt.Fprintln(s.Stdout, "No leaves to resolve.")
+	} else {
+		fmt.Fprintln(s.Stdout, "Resolved the following leaves:")
+		for leaf, version := range result.ResolvedLeaves {
+			fmt.Fprintf(s.Stdout, "\t%s → %s\n", leaf, version)
+		}
+	}
+
+	return result, nil
+}
+
+func (s Service) resolveLeavesForFiles(mintFiles []api.MintDirectoryEntry, cfg ResolveLeavesConfig) (ResolveLeavesResult, error) {
+	if len(mintFiles) == 0 {
 		return ResolveLeavesResult{}, errors.New(fmt.Sprintf("no files provided, and no yaml files found in directory %s", cfg.DefaultDir))
+	}
+
+	files := make([]string, len(mintFiles))
+	for i, entry := range mintFiles {
+		files[i] = entry.OriginalPath
 	}
 
 	leafReferences, err := s.findLeafReferences(files)
@@ -1140,26 +1101,15 @@ func (s Service) ResolveLeaves(cfg ResolveLeavesConfig) (ResolveLeavesResult, er
 		resolved[leaf] = targetLeafVersion
 	}
 
-	err = s.replaceInFilesRegexp(files, replacements)
+	err = s.replaceRegexpInFiles(files, replacements)
 	if err != nil {
 		return ResolveLeavesResult{}, errors.Wrap(err, "unable to replace leaf references")
-	}
-
-	if !cfg.Silent {
-		if len(resolved) == 0 {
-			fmt.Fprintln(s.Stdout, "No leaves to resolve.")
-		} else {
-			fmt.Fprintln(s.Stdout, "Resolved the following leaves:")
-			for leaf, version := range resolved {
-				fmt.Fprintf(s.Stdout, "\t%s → %s\n", leaf, version)
-			}
-		}
 	}
 
 	return ResolveLeavesResult{ResolvedLeaves: resolved}, nil
 }
 
-func (s Service) replaceInFilesRegexp(files []string, replacements map[*regexp.Regexp]string) error {
+func (s Service) replaceRegexpInFiles(files []string, replacements map[*regexp.Regexp]string) error {
 	for _, path := range files {
 		fd, err := os.Open(path)
 		if err != nil {
@@ -1192,7 +1142,7 @@ func (s Service) replaceInFilesRegexp(files []string, replacements map[*regexp.R
 	return nil
 }
 
-func (s Service) replaceInFiles(files []string, replacements map[string]string) error {
+func (s Service) replaceStringInFiles(files []string, replacements map[string]string) error {
 	for _, path := range files {
 		fd, err := os.Open(path)
 		if err != nil {
