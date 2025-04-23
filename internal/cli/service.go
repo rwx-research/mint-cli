@@ -150,6 +150,23 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		return nil, fmt.Errorf("Expected exactly 1 run definition, got %d", len(taskDefinitions))
 	}
 
+	reloadRunDefinitions := func() error {
+		// Reload run definitions after modifying the file
+		taskDefinitions, err = s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
+		if err != nil {
+			return errors.Wrapf(err, "unable to reload %q", taskDefinitionYamlPath)
+		}
+		if mintDirectoryPath != "" {
+			mintDirectoryEntries, err := s.mintDirectoryEntries(mintDirectoryPath)
+			if err != nil && !errors.Is(err, errors.ErrFileNotExists) {
+				return errors.Wrapf(err, "unable to reload mint directory %q", mintDirectoryPath)
+			}
+
+			mintDirectory = mintDirectoryEntries
+		}
+		return nil
+	}
+
 	addBaseIfNeeded, err := s.resolveBaseForFiles(taskDefinitions, BaseLayerSpec{})
 	s.outputLatestVersionMessage()
 	if err != nil {
@@ -164,18 +181,26 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 
 		fmt.Fprintf(s.Stderr, "Configured %q to run on %s\n\n", taskDefinitionYamlPath, update.ResolvedBase.Os)
 
-		// Reload run definitions after modifying the file
-		taskDefinitions, err = s.mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
-		if err != nil {
-			return nil, errors.Wrapf(err, "unable to reload %q", taskDefinitionYamlPath)
+		if err = reloadRunDefinitions(); err != nil {
+			return nil, err
 		}
-		if mintDirectoryPath != "" {
-			mintDirectoryEntries, err := s.mintDirectoryEntries(mintDirectoryPath)
-			if err != nil && !errors.Is(err, errors.ErrFileNotExists) {
-				return nil, errors.Wrapf(err, "unable to reload mint directory %q", mintDirectoryPath)
-			}
+	}
 
-			mintDirectory = mintDirectoryEntries
+	res, err := s.resolveLeavesForFiles(taskDefinitions, ResolveLeavesConfig{
+		DefaultDir:          cfg.MintDirectory,
+		LatestVersionPicker: PickLatestMajorVersion,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to resolve leaves")
+	}
+	if res.HasChanges() {
+		for leaf, version := range res.ResolvedLeaves {
+			fmt.Fprintf(s.Stderr, "Configured leaf %s to use version %s\n", leaf, version)
+		}
+		fmt.Fprintln(s.Stderr, "")
+
+		if err = reloadRunDefinitions(); err != nil {
+			return nil, err
 		}
 	}
 

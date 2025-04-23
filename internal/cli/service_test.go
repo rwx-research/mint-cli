@@ -79,6 +79,10 @@ var _ = Describe("CLI Service", func() {
 		var runConfig cli.InitiateRunConfig
 		var baseSpec string
 		var resolveBaseLayerCalled bool
+		var getLeafVersionsCalled bool
+		var majorLeafVersions map[string]string
+		var minorLeafVersions map[string]map[string]string
+		var getLeafVersionsError error
 
 		BeforeEach(func() {
 			runConfig = cli.InitiateRunConfig{}
@@ -92,6 +96,19 @@ var _ = Describe("CLI Service", func() {
 					Tag:  "1.0",
 					Arch: "x86_64",
 				}, nil
+			}
+
+			getLeafVersionsCalled = false
+			majorLeafVersions = make(map[string]string)
+			minorLeafVersions = make(map[string]map[string]string)
+			getLeafVersionsError = nil
+
+			mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
+				getLeafVersionsCalled = true
+				return &api.LeafVersionsResult{
+					LatestMajor: majorLeafVersions,
+					LatestMinor: minorLeafVersions,
+				}, getLeafVersionsError
 			}
 		})
 
@@ -341,6 +358,67 @@ var _ = Describe("CLI Service", func() {
 
 				It("prints a warning", func() {
 					Expect(mockStderr.String()).To(ContainSubstring("Configured \".mint/foo.yml\" to run on ubuntu 24.04\n"))
+				})
+			})
+
+			Context("when leaf is missing version", func() {
+				var originalSpecifiedFileContent string
+				var receivedSpecifiedFileContent string
+				var receivedMintDirectoryFileContent string
+
+				BeforeEach(func() {
+					originalSpecifiedFileContent = baseSpec + "tasks:\n  - key: foo\n    call: mint/setup-node\n"
+
+					var err error
+
+					mintDir := filepath.Join(tmp, ".mint")
+					err = os.MkdirAll(mintDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "foo.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					runConfig.MintFilePath = ".mint/foo.yml"
+					runConfig.MintDirectory = ".mint"
+
+					majorLeafVersions["mint/setup-node"] = "1.2.3"
+
+					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
+						Expect(cfg.TaskDefinitions).To(HaveLen(1))
+						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
+						Expect(cfg.MintDirectory).To(HaveLen(2))
+						Expect(cfg.UseCache).To(BeTrue())
+						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
+						receivedMintDirectoryFileContent = cfg.MintDirectory[1].FileContents
+
+						return &api.InitiateRunResult{
+							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							TargetedTaskKeys: []string{},
+							DefinitionPath:   ".mint/foo.yml",
+						}, nil
+					}
+				})
+
+				JustBeforeEach(func() {
+					_, err := service.InitiateRun(runConfig)
+					Expect(err).ToNot(HaveOccurred())
+				})
+
+				It("calls the API to resolve the current leaf version", func() {
+					Expect(getLeafVersionsCalled).To(BeTrue())
+				})
+
+				It("passes the updated file content to initiate run", func() {
+					Expect(receivedSpecifiedFileContent).To(Equal(baseSpec + "tasks:\n  - key: foo\n    call: mint/setup-node 1.2.3\n"))
+				})
+
+				It("passes the updated file content in the mint directory artifact", func() {
+					Expect(receivedMintDirectoryFileContent).To(Equal(baseSpec + "tasks:\n  - key: foo\n    call: mint/setup-node 1.2.3\n"))
+				})
+
+				It("prints a warning", func() {
+					Expect(mockStderr.String()).To(ContainSubstring("Configured leaf mint/setup-node to use version 1.2.3\n"))
 				})
 			})
 		})

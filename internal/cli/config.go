@@ -258,10 +258,6 @@ func (c ResolveLeavesConfig) PickLatestVersion(versions api.LeafVersionsResult, 
 }
 
 func (c ResolveLeavesConfig) Validate() error {
-	if c.DefaultDir == "" {
-		return errors.New("a default directory must be provided")
-	}
-
 	if c.LatestVersionPicker == nil {
 		return errors.New("a latest version picker must be provided")
 	}
@@ -271,4 +267,8 @@ func (c ResolveLeavesConfig) Validate() error {
 
 type ResolveLeavesResult struct {
 	ResolvedLeaves map[string]string
+}
+
+func (r ResolveLeavesResult) HasChanges() bool {
+	return len(r.ResolvedLeaves) > 0
 }
