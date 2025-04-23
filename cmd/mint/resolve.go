@@ -31,6 +31,21 @@ var (
 			"it will use the current default base layer.",
 		Use: "base [flags]",
 	}
+
+	resolveLeavesCmd = &cobra.Command{
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
+				DefaultDir: ".mint",
+				LatestVersionPicker: cli.PickLatestMajorVersion,
+			})
+			return err
+		},
+		Short: "Add the latest version to all leaf invocations that do not have one",
+		Long: "Add the latest version to all leaf invocations that do not have one.\n" +
+			"Updates all top-level YAML files in .mint that 'call' a leaf without a version\n" +
+			"to use the latest version.",
+		Use: "leaves",
+	}
 )
 
 func init() {
@@ -38,4 +53,5 @@ func init() {
 	resolveBaseCmd.Flags().StringVar(&resolveBaseTag, "tag", "", "target base layer tag")
 	resolveBaseCmd.Flags().StringVar(&resolveBaseArch, "arch", "", "target architecture")
 	resolveCmd.AddCommand(resolveBaseCmd)
+	resolveCmd.AddCommand(resolveLeavesCmd)
 }

@@ -657,7 +657,7 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 	return nil
 }
 
-var reLeaf = regexp.MustCompile(`([a-z0-9-]+\/[a-z0-9-]+) ([0-9]+)\.[0-9]+\.[0-9]+`)
+var reLeaf = regexp.MustCompile(`call:\s+(([a-z0-9-]+\/[a-z0-9-]+)(?:\s+([0-9]+)\.[0-9]+\.[0-9]+)?)`)
 
 // findLeafReferences returns a map indexed with the leaf names. Each key is another map, this time indexed by
 // the major version number. Finally, the value is an array of version strings as they appeared in the source
@@ -678,9 +678,9 @@ func (s Service) findLeafReferences(files []string) (map[string]map[string][]str
 		}
 
 		for _, match := range reLeaf.FindAllSubmatch(fileContent, -1) {
-			fullMatch := string(match[0])
-			leaf := string(match[1])
-			majorVersion := string(match[2])
+			fullMatch := string(match[1])
+			leaf := string(match[2])
+			majorVersion := string(match[3])
 
 			majorVersions, ok := matches[leaf]
 			if !ok {
@@ -1072,6 +1072,124 @@ func (s Service) writeRunFileWithBase(runFile baseLayerRunFile, resolvedBase bas
 
 	_, err = file.Write(newContent)
 	return err
+}
+
+func (s Service) ResolveLeaves(cfg ResolveLeavesConfig) (ResolveLeavesResult, error) {
+	var files []string
+
+	err := cfg.Validate()
+	if err != nil {
+		return ResolveLeavesResult{}, errors.Wrap(err, "validation failed")
+	}
+
+	if len(cfg.Files) > 0 {
+		files = cfg.Files
+	} else {
+		mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
+		if err != nil {
+			return ResolveLeavesResult{}, err
+		}
+
+		yamlFiles := make([]string, 0)
+		for _, entry := range s.yamlFilesInMintDirectory(mintDirectory) {
+			yamlFiles = append(yamlFiles, entry.OriginalPath)
+		}
+
+		files = yamlFiles
+	}
+
+	if len(files) == 0 {
+		return ResolveLeavesResult{}, errors.New(fmt.Sprintf("no files provided, and no yaml files found in directory %s", cfg.DefaultDir))
+	}
+
+	leafReferences, err := s.findLeafReferences(files)
+	if err != nil {
+		return ResolveLeavesResult{}, err
+	}
+
+	leavesWithoutVersion := make([]string, 0)
+	for leaf, majorToMinorVersions := range leafReferences {
+		if _, found := majorToMinorVersions[""]; found {
+			leavesWithoutVersion = append(leavesWithoutVersion, leaf)
+		}
+	}
+
+	leafVersions, err := s.APIClient.GetLeafVersions()
+	s.outputLatestVersionMessage()
+	if err != nil {
+		return ResolveLeavesResult{}, errors.Wrap(err, "unable to fetch leaf versions")
+	}
+
+	replacements := make(map[*regexp.Regexp]string)
+	resolved := make(map[string]string)
+	for _, leaf := range leavesWithoutVersion {
+		targetLeafVersion, err := cfg.PickLatestVersion(*leafVersions, leaf)
+		if err != nil {
+			fmt.Fprintln(s.Stderr, err.Error())
+			continue
+		}
+
+		re, err := regexp.Compile(fmt.Sprintf(`(?m)^([ \t]*)call:[ \t]+%s([ \t]+#[^\r\n]+)?$`, regexp.QuoteMeta(leaf)))
+		if err != nil {
+			fmt.Fprintln(s.Stderr, err.Error())
+			continue
+		}
+
+		replacement := fmt.Sprintf("${1}call: %s %s${2}", leaf, targetLeafVersion)
+		replacements[re] = replacement
+		resolved[leaf] = targetLeafVersion
+	}
+
+	err = s.replaceInFilesRegexp(files, replacements)
+	if err != nil {
+		return ResolveLeavesResult{}, errors.Wrap(err, "unable to replace leaf references")
+	}
+
+	if !cfg.Silent {
+		if len(resolved) == 0 {
+			fmt.Fprintln(s.Stdout, "No leaves to resolve.")
+		} else {
+			fmt.Fprintln(s.Stdout, "Resolved the following leaves:")
+			for leaf, version := range resolved {
+				fmt.Fprintf(s.Stdout, "\t%s → %s\n", leaf, version)
+			}
+		}
+	}
+
+	return ResolveLeavesResult{ResolvedLeaves: resolved}, nil
+}
+
+func (s Service) replaceInFilesRegexp(files []string, replacements map[*regexp.Regexp]string) error {
+	for _, path := range files {
+		fd, err := os.Open(path)
+		if err != nil {
+			return errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		fileContent, err := io.ReadAll(fd)
+		if err != nil {
+			return errors.Wrapf(err, "error while reading %q", path)
+		}
+		fileContentStr := string(fileContent)
+
+		for re, new := range replacements {
+			fileContentStr = re.ReplaceAllString(fileContentStr, new)
+		}
+
+		fd, err = os.Create(path)
+		if err != nil {
+			return errors.Wrapf(err, "error while opening %q", path)
+		}
+		defer fd.Close()
+
+		_, err = io.WriteString(fd, fileContentStr)
+		if err != nil {
+			return errors.Wrapf(err, "error while writing %q", path)
+		}
+	}
+
+	return nil
 }
 
 func (s Service) replaceInFiles(files []string, replacements map[string]string) error {

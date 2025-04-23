@@ -73,7 +73,7 @@ func (c InitiateDispatchConfig) Validate() error {
 }
 
 type GetDispatchConfig struct {
-	DispatchId  string
+	DispatchId string
 }
 
 type GetDispatchRun = struct {
@@ -208,8 +208,8 @@ type LeafVersionsResult struct {
 }
 
 type resolveBaseLayerSpec struct {
-	Os string `json:"os,omitempty"`
-	Tag string `json:"tag,omitempty"`
+	Os   string `json:"os,omitempty"`
+	Tag  string `json:"tag,omitempty"`
 	Arch string `json:"arch,omitempty"`
 }
 

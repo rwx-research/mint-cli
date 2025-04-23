@@ -201,3 +201,30 @@ func (c ResolveBaseConfig) Validate() error {
 
 	return nil
 }
+
+type ResolveLeavesConfig struct {
+	DefaultDir          string
+	Files               []string
+	Silent              bool
+	LatestVersionPicker func(versions api.LeafVersionsResult, leaf string, _ string) (string, error)
+}
+
+func (c ResolveLeavesConfig) PickLatestVersion(versions api.LeafVersionsResult, leaf string) (string, error) {
+	return c.LatestVersionPicker(versions, leaf, "")
+}
+
+func (c ResolveLeavesConfig) Validate() error {
+	if len(c.Files) == 0 && c.DefaultDir == "" {
+		return errors.New("a default directory must be provided if not specifying files explicitly")
+	}
+
+	if c.LatestVersionPicker == nil {
+		return errors.New("a latest version picker must be provided")
+	}
+
+	return nil
+}
+
+type ResolveLeavesResult struct {
+	ResolvedLeaves map[string]string
+}
