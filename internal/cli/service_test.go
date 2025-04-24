@@ -79,6 +79,10 @@ var _ = Describe("CLI Service", func() {
 		var runConfig cli.InitiateRunConfig
 		var baseSpec string
 		var resolveBaseLayerCalled bool
+		var getLeafVersionsCalled bool
+		var majorLeafVersions map[string]string
+		var minorLeafVersions map[string]map[string]string
+		var getLeafVersionsError error
 
 		BeforeEach(func() {
 			runConfig = cli.InitiateRunConfig{}
@@ -92,6 +96,19 @@ var _ = Describe("CLI Service", func() {
 					Tag:  "1.0",
 					Arch: "x86_64",
 				}, nil
+			}
+
+			getLeafVersionsCalled = false
+			majorLeafVersions = make(map[string]string)
+			minorLeafVersions = make(map[string]map[string]string)
+			getLeafVersionsError = nil
+
+			mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
+				getLeafVersionsCalled = true
+				return &api.LeafVersionsResult{
+					LatestMajor: majorLeafVersions,
+					LatestMinor: minorLeafVersions,
+				}, getLeafVersionsError
 			}
 		})
 
@@ -285,7 +302,7 @@ var _ = Describe("CLI Service", func() {
 				})
 			})
 
-			Context("when 'base' is missing", func() {
+			Context("when base is missing", func() {
 				var originalSpecifiedFileContent string
 				var receivedSpecifiedFileContent string
 				var receivedMintDirectoryFileContent string
@@ -341,6 +358,67 @@ var _ = Describe("CLI Service", func() {
 
 				It("prints a warning", func() {
 					Expect(mockStderr.String()).To(ContainSubstring("Configured \".mint/foo.yml\" to run on ubuntu 24.04\n"))
+				})
+			})
+
+			Context("when leaf is missing version", func() {
+				var originalSpecifiedFileContent string
+				var receivedSpecifiedFileContent string
+				var receivedMintDirectoryFileContent string
+
+				BeforeEach(func() {
+					originalSpecifiedFileContent = baseSpec + "tasks:\n  - key: foo\n    call: mint/setup-node\n"
+
+					var err error
+
+					mintDir := filepath.Join(tmp, ".mint")
+					err = os.MkdirAll(mintDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "foo.yml"), []byte(originalSpecifiedFileContent), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					runConfig.MintFilePath = ".mint/foo.yml"
+					runConfig.MintDirectory = ".mint"
+
+					majorLeafVersions["mint/setup-node"] = "1.2.3"
+
+					mockAPI.MockInitiateRun = func(cfg api.InitiateRunConfig) (*api.InitiateRunResult, error) {
+						Expect(cfg.TaskDefinitions).To(HaveLen(1))
+						Expect(cfg.TaskDefinitions[0].Path).To(Equal(runConfig.MintFilePath))
+						Expect(cfg.MintDirectory).To(HaveLen(2))
+						Expect(cfg.UseCache).To(BeTrue())
+						receivedSpecifiedFileContent = cfg.TaskDefinitions[0].FileContents
+						receivedMintDirectoryFileContent = cfg.MintDirectory[1].FileContents
+
+						return &api.InitiateRunResult{
+							RunId:            "785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							RunURL:           "https://cloud.rwx.com/mint/rwx/runs/785ce4e8-17b9-4c8b-8869-a55e95adffe7",
+							TargetedTaskKeys: []string{},
+							DefinitionPath:   ".mint/foo.yml",
+						}, nil
+					}
+				})
+
+				JustBeforeEach(func() {
+					_, err := service.InitiateRun(runConfig)
+					Expect(err).ToNot(HaveOccurred())
+				})
+
+				It("calls the API to resolve the current leaf version", func() {
+					Expect(getLeafVersionsCalled).To(BeTrue())
+				})
+
+				It("passes the updated file content to initiate run", func() {
+					Expect(receivedSpecifiedFileContent).To(Equal(baseSpec + "tasks:\n  - key: foo\n    call: mint/setup-node 1.2.3\n"))
+				})
+
+				It("passes the updated file content in the mint directory artifact", func() {
+					Expect(receivedMintDirectoryFileContent).To(Equal(baseSpec + "tasks:\n  - key: foo\n    call: mint/setup-node 1.2.3\n"))
+				})
+
+				It("prints a warning", func() {
+					Expect(mockStderr.String()).To(ContainSubstring("Configured leaf mint/setup-node to use version 1.2.3\n"))
 				})
 			})
 		})
@@ -1502,6 +1580,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				BeforeEach(func() {
 					majorLeafVersions["mint/setup-node"] = "1.2.3"
 					majorLeafVersions["mint/setup-ruby"] = "1.0.1"
+					majorLeafVersions["mint/setup-go"] = "1.3.5"
 
 					var err error
 
@@ -1511,6 +1590,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 							call: mint/setup-node 1.0.1
 						- key: bar
 							call: mint/setup-ruby 0.0.1
+						- key: baz
+							call: mint/setup-go
 					`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
@@ -1541,6 +1622,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 							call: mint/setup-node 1.2.3
 						- key: bar
 							call: mint/setup-ruby 1.0.1
+						- key: baz
+							call: mint/setup-go 1.3.5
 					`))
 
 					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
@@ -1560,6 +1643,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 					Expect(err).NotTo(HaveOccurred())
 					Expect(mockStdout.String()).To(ContainSubstring("Updated the following leaves:"))
+					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-go → 1.3.5"))
 					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 → 1.2.3"))
 					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → 1.0.1"))
 					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → 1.0.1"))
@@ -1705,6 +1789,297 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 		})
 	})
 
+	Describe("resolving leaves", func() {
+		Context("when no files provided", func() {
+			Context("when no yaml files found in the default directory", func() {
+				var mintDir string
+
+				BeforeEach(func() {
+					var err error
+
+					mintDir = tmp
+
+					err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "bar.json"), []byte("some json"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("returns an error", func() {
+					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          mintDir,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("no files provided, and no yaml files found in directory %s", mintDir)))
+				})
+			})
+
+			Context("when yaml files are found in the specified directory", func() {
+				var mintDir string
+
+				BeforeEach(func() {
+					var err error
+
+					mintDir = tmp
+
+					err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
+							tasks:
+								- key: foo
+									call: mint/setup-node 1.2.3
+						`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
+							tasks:
+								- key: foo
+									call: mint/setup-node
+						`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					nestedDir := filepath.Join(mintDir, "some", "nested", "dir")
+					err = os.MkdirAll(nestedDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(nestedDir, "tasks.yaml"), []byte(`
+							tasks:
+								- key: foo
+									call: mint/setup-node # comment here
+						`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				BeforeEach(func() {
+					mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
+						return &api.LeafVersionsResult{
+							LatestMajor: map[string]string{"mint/setup-node": "1.3.0"},
+						}, nil
+					}
+				})
+
+				It("uses the default directory", func() {
+					var err error
+
+					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          mintDir,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					var contents []byte
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.2.3"))
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "baz.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0"))
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "some", "nested", "dir", "tasks.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0 # comment here"))
+				})
+			})
+		})
+
+		Context("with files", func() {
+			var majorLeafVersions map[string]string
+			var minorLeafVersions map[string]map[string]string
+			var leafError error
+
+			BeforeEach(func() {
+				majorLeafVersions = make(map[string]string)
+				minorLeafVersions = make(map[string]map[string]string)
+				leafError = nil
+
+				mockAPI.MockGetLeafVersions = func() (*api.LeafVersionsResult, error) {
+					return &api.LeafVersionsResult{
+						LatestMajor: majorLeafVersions,
+						LatestMinor: minorLeafVersions,
+					}, leafError
+				}
+			})
+
+			Context("when the leaf versions cannot be retrieved", func() {
+				BeforeEach(func() {
+					leafError = errors.New("cannot get leaf versions")
+
+					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(""), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("returns an error", func() {
+					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          tmp,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("cannot get leaf versions"))
+				})
+			})
+
+			Context("when all leaves have a version", func() {
+				BeforeEach(func() {
+					majorLeafVersions["mint/setup-node"] = "1.3.0"
+
+					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
+						tasks:
+							- key: foo
+								call: mint/setup-node 1.2.3
+						`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("does not change the file content", func() {
+					var err error
+
+					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          tmp,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
+						tasks:
+							- key: foo
+								call: mint/setup-node 1.2.3
+						`))
+				})
+
+				It("indicates no leaves were resolved", func() {
+					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          tmp,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(mockStdout.String()).To(ContainSubstring("No leaves to resolve."))
+				})
+			})
+
+			Context("when there are leaves to resolve across multiple files", func() {
+				BeforeEach(func() {
+					majorLeafVersions["mint/setup-node"] = "1.2.3"
+					majorLeafVersions["mint/setup-ruby"] = "1.0.1"
+					majorLeafVersions["mint/setup-go"] = "1.3.5"
+
+					var err error
+
+					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
+						tasks:
+							- key: foo
+								call: mint/setup-node # comment
+							- key: bar
+								call: mint/setup-ruby 0.0.1
+							- key: baz
+								call: mint/setup-go
+						`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = os.WriteFile(filepath.Join(tmp, "bar.yaml"), []byte(`
+						tasks:
+							- key: foo
+								call: mint/setup-ruby
+						`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("updates all files", func() {
+					var err error
+
+					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          tmp,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					var contents []byte
+
+					contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
+						tasks:
+							- key: foo
+								call: mint/setup-node 1.2.3 # comment
+							- key: bar
+								call: mint/setup-ruby 0.0.1
+							- key: baz
+								call: mint/setup-go 1.3.5
+						`))
+
+					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
+						tasks:
+							- key: foo
+								call: mint/setup-ruby 1.0.1
+						`))
+				})
+
+				It("indicates leaves were resolved", func() {
+					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          tmp,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(mockStdout.String()).To(ContainSubstring("Resolved the following leaves:"))
+					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-go → 1.3.5"))
+					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-node → 1.2.3"))
+					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby → 1.0.1"))
+				})
+			})
+
+			Context("when a leaf cannot be found", func() {
+				BeforeEach(func() {
+					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
+						tasks:
+							- key: foo
+								call: mint/setup-node
+						`), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				It("does not modify the file", func() {
+					var err error
+
+					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          tmp,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`
+						tasks:
+							- key: foo
+								call: mint/setup-node
+						`))
+				})
+
+				It("indicates a leaf could not be found", func() {
+					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
+						DefaultDir:          tmp,
+						LatestVersionPicker: cli.PickLatestMajorVersion,
+					})
+
+					Expect(err).NotTo(HaveOccurred())
+					Expect(mockStderr.String()).To(ContainSubstring(`Unable to find the leaf "mint/setup-node"; skipping it.`))
+				})
+			})
+		})
+	})
+
 	Describe("resolving base layers", func() {
 		var apiOs string
 		var apiTag string
@@ -1761,7 +2136,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 
 			It("returns an error", func() {
-				err := service.ResolveBase(cli.ResolveBaseConfig{
+				_, err := service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 
@@ -1788,13 +2163,13 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 
 			It("ignores the file", func() {
-				err := service.ResolveBase(cli.ResolveBaseConfig{
+				_, err := service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(mockStderr.String()).To(Equal(""))
-				Expect(mockStdout.String()).To(ContainSubstring("No run files needed to be updated"))
+				Expect(mockStdout.String()).To(ContainSubstring("No run files were missing base"))
 			})
 		})
 
@@ -1825,7 +2200,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			It("adds base to file", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 					Arch:       "quantum",
 				})
@@ -1845,9 +2220,10 @@ tasks:
   - key: b
 `))
 
-				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
-%s
-`, filepath.Join(mintDir, "bar.yaml"))))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					filepath.Join(mintDir, "bar.yaml"),
+				)))
 
 				// yaml file without tasks key is unaffected
 				contents, err = os.ReadFile(filepath.Join(mintDir, "baz.yaml"))
@@ -1884,7 +2260,7 @@ tasks:
 			It("adds tag to base", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -1906,9 +2282,10 @@ tasks:
   - key: b
 `))
 
-				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
-%s
-`, filepath.Join(mintDir, "ci.yaml"))))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					filepath.Join(mintDir, "ci.yaml"),
+				)))
 			})
 		})
 
@@ -1938,7 +2315,7 @@ tasks:
 			It("adds tag to base", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -1961,9 +2338,10 @@ tasks:
   - key: b
 `))
 
-				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
-%s
-`, filepath.Join(mintDir, "ci.yaml"))))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					filepath.Join(mintDir, "ci.yaml"),
+				)))
 			})
 		})
 
@@ -1991,7 +2369,7 @@ base:
 			It("adds tag to base without moving base before tasks", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -2013,9 +2391,10 @@ base:
   tag: 1.2
 `))
 
-				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(`Updated 1 file:
-%s
-`, filepath.Join(mintDir, "ci.yaml"))))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					filepath.Join(mintDir, "ci.yaml"),
+				)))
 			})
 		})
 
@@ -2051,7 +2430,7 @@ tasks:
 			It("updates all files", func() {
 				var err error
 
-				err = service.ResolveBase(cli.ResolveBaseConfig{
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
 					DefaultDir: mintDir,
 					Os:         "gentoo 99",
 				})
@@ -2092,7 +2471,7 @@ tasks:
   - key: f
 `))
 
-				Expect(mockStdout.String()).To(ContainSubstring("Updated 3 files:"))
+				Expect(mockStdout.String()).To(ContainSubstring("Added base to 3 files:"))
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "one.yaml")))
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "two.yaml")))
 				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "three.yaml")))
@@ -2114,7 +2493,7 @@ tasks:
 						return nil
 					}
 
-					err = service.ResolveBase(cli.ResolveBaseConfig{
+					_, err = service.ResolveBase(cli.ResolveBaseConfig{
 						DefaultDir: mintDir,
 					})
 					Expect(err).To(HaveOccurred())

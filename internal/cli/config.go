@@ -201,3 +201,74 @@ func (c ResolveBaseConfig) Validate() error {
 
 	return nil
 }
+
+type BaseLayerSpec struct {
+	Os   string `yaml:"os"`
+	Tag  string `yaml:"tag"`
+	Arch string `yaml:"arch"`
+}
+
+func (b BaseLayerSpec) Merge(other BaseLayerSpec) BaseLayerSpec {
+	os := b.Os
+	if other.Os != "" {
+		os = other.Os
+	}
+
+	tag := b.Tag
+	if other.Tag != "" {
+		tag = other.Tag
+	}
+
+	arch := b.Arch
+	if other.Arch != "" {
+		arch = other.Arch
+	}
+
+	return BaseLayerSpec{
+		Os:   os,
+		Tag:  tag,
+		Arch: arch,
+	}
+}
+
+type BaseLayerRunFile struct {
+	Spec         BaseLayerSpec
+	ResolvedBase BaseLayerSpec
+	Filepath     string
+	Error        error
+	Updated      bool
+}
+
+type ResolveBaseResult struct {
+	ErroredRunFiles []BaseLayerRunFile
+	UpdatedRunFiles []BaseLayerRunFile
+}
+
+func (r ResolveBaseResult) HasChanges() bool {
+	return len(r.ErroredRunFiles) > 0 || len(r.UpdatedRunFiles) > 0
+}
+
+type ResolveLeavesConfig struct {
+	DefaultDir          string
+	LatestVersionPicker func(versions api.LeafVersionsResult, leaf string, _ string) (string, error)
+}
+
+func (c ResolveLeavesConfig) PickLatestVersion(versions api.LeafVersionsResult, leaf string) (string, error) {
+	return c.LatestVersionPicker(versions, leaf, "")
+}
+
+func (c ResolveLeavesConfig) Validate() error {
+	if c.LatestVersionPicker == nil {
+		return errors.New("a latest version picker must be provided")
+	}
+
+	return nil
+}
+
+type ResolveLeavesResult struct {
+	ResolvedLeaves map[string]string
+}
+
+func (r ResolveLeavesResult) HasChanges() bool {
+	return len(r.ResolvedLeaves) > 0
+}
