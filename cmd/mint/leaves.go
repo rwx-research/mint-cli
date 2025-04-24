@@ -11,13 +11,12 @@ var leavesCmd = &cobra.Command{
 }
 
 var (
-	Files                   []string
-	AllowMajorVersionChange bool
+	LeavesAllowMajorVersionChange bool
 
 	leavesUpdateCmd = &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
 			replacementVersionPicker := cli.PickLatestMinorVersion
-			if AllowMajorVersionChange {
+			if LeavesAllowMajorVersionChange {
 				replacementVersionPicker = cli.PickLatestMajorVersion
 			}
 
@@ -35,6 +34,6 @@ var (
 )
 
 func init() {
-	leavesUpdateCmd.Flags().BoolVar(&AllowMajorVersionChange, "allow-major-version-change", false, "update leaves to the latest major version")
+	leavesUpdateCmd.Flags().BoolVar(&LeavesAllowMajorVersionChange, "allow-major-version-change", false, "update leaves to the latest major version")
 	leavesCmd.AddCommand(leavesUpdateCmd)
 }
