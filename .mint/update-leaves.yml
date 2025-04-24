@@ -5,6 +5,10 @@ on:
       init:
         sha: ${{ event.git.sha }}
 
+base:
+  os: ubuntu 24.04
+  tag: 1.1
+
 tasks:
   - key: update
     call: mint/update-leaves-github 1.0.7
