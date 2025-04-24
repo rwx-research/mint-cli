@@ -9,19 +9,6 @@ var updateCmd = &cobra.Command{
 	Short: "Update versions for base layers and Mint leaves",
 	Use:   "update [flags] [files...]",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		updateLeaves := func(files []string) error {
-			replacementVersionPicker := cli.PickLatestMinorVersion
-			if AllowMajorVersionChange {
-				replacementVersionPicker = cli.PickLatestMajorVersion
-			}
-
-			return service.UpdateLeaves(cli.UpdateLeavesConfig{
-				Files:                    files,
-				DefaultDir:               ".mint",
-				ReplacementVersionPicker: replacementVersionPicker,
-			})
-		}
-
 		if len(args) > 0 && args[0] == "leaves" {
 			return updateLeaves(args[1:])
 		}
@@ -35,16 +22,7 @@ var (
 
 	updateLeavesCmd = &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
-			replacementVersionPicker := cli.PickLatestMinorVersion
-			if AllowMajorVersionChange {
-				replacementVersionPicker = cli.PickLatestMajorVersion
-			}
-
-			return service.UpdateLeaves(cli.UpdateLeavesConfig{
-				Files:                    args,
-				DefaultDir:               ".mint",
-				ReplacementVersionPicker: replacementVersionPicker,
-			})
+			return updateLeaves(args)
 		},
 		Short: "Update all leaves to their latest (minor) version",
 		Long: "Update all leaves to their latest (minor) version.\n" +
@@ -52,6 +30,19 @@ var (
 		Use: "leaves [flags] [files...]",
 	}
 )
+
+func updateLeaves(files []string) error {
+	replacementVersionPicker := cli.PickLatestMinorVersion
+	if AllowMajorVersionChange {
+		replacementVersionPicker = cli.PickLatestMajorVersion
+	}
+
+	return service.UpdateLeaves(cli.UpdateLeavesConfig{
+		Files:                    files,
+		DefaultDir:               ".mint",
+		ReplacementVersionPicker: replacementVersionPicker,
+	})
+}
 
 func init() {
 	updateLeavesCmd.Flags().BoolVar(&AllowMajorVersionChange, "allow-major-version-change", false, "update leaves to the latest major version")

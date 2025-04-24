@@ -1438,17 +1438,17 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Expect(err).NotTo(HaveOccurred())
 
 					err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
-						tasks:
-							- key: foo
-								call: mint/setup-node 1.2.3
-					`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
 					err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
-						tasks:
-							- key: foo
-								call: mint/setup-node 1.2.3
-					`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
 					nestedDir := filepath.Join(mintDir, "some", "nested", "dir")
@@ -1456,10 +1456,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Expect(err).NotTo(HaveOccurred())
 
 					err = os.WriteFile(filepath.Join(nestedDir, "tasks.yaml"), []byte(`
-						tasks:
-							- key: foo
-								call: mint/setup-node 1.2.3
-					`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -1540,10 +1540,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					majorLeafVersions["mint/setup-node"] = "1.2.3"
 
 					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.2.3
-					`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -1559,10 +1559,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.2.3
-					`))
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+`))
 				})
 
 				It("indicates no leaves were updated", func() {
@@ -1577,6 +1577,9 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 
 			Context("when there are leaves to update across multiple files", func() {
+				var originalFooContents string
+				var originalBarContents string
+
 				BeforeEach(func() {
 					majorLeafVersions["mint/setup-node"] = "1.2.3"
 					majorLeafVersions["mint/setup-ruby"] = "1.0.1"
@@ -1584,22 +1587,24 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 					var err error
 
-					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.0.1
-						- key: bar
-							call: mint/setup-ruby 0.0.1
-						- key: baz
-							call: mint/setup-go
-					`), 0o644)
+					originalFooContents = `
+tasks:
+	- key: foo
+		call: mint/setup-node 1.0.1
+	- key: bar
+		call: mint/setup-ruby 0.0.1
+	- key: baz
+		call: mint/setup-go
+`
+					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(originalFooContents), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
-					err = os.WriteFile(filepath.Join(tmp, "bar.yaml"), []byte(`
-					tasks:
-						- key: foo
-							call: mint/setup-ruby 1.0.0
-					`), 0o644)
+					originalBarContents = `
+tasks:
+	- key: foo
+		call: mint/setup-ruby 1.0.0
+`
+					err = os.WriteFile(filepath.Join(tmp, "bar.yaml"), []byte(originalBarContents), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -1617,22 +1622,22 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.2.3
-						- key: bar
-							call: mint/setup-ruby 1.0.1
-						- key: baz
-							call: mint/setup-go 1.3.5
-					`))
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+	- key: bar
+		call: mint/setup-ruby 1.0.1
+	- key: baz
+		call: mint/setup-go 1.3.5
+`))
 
 					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
-					tasks:
-						- key: foo
-							call: mint/setup-ruby 1.0.1
-					`))
+tasks:
+	- key: foo
+		call: mint/setup-ruby 1.0.1
+`))
 				})
 
 				It("indicates leaves were updated", func() {
@@ -1648,15 +1653,41 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → 1.0.1"))
 					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → 1.0.1"))
 				})
+
+				Context("when a single file is targeted", func() {
+					It("updates only the targeted file", func() {
+						var err error
+
+						err = service.UpdateLeaves(cli.UpdateLeavesConfig{
+							Files:                    []string{filepath.Join(tmp, "bar.yaml")},
+							ReplacementVersionPicker: cli.PickLatestMajorVersion,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						var contents []byte
+
+						contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(originalFooContents))
+
+						contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(`
+tasks:
+	- key: foo
+		call: mint/setup-ruby 1.0.1
+`))
+					})
+				})
 			})
 
 			Context("when a leaf cannot be found", func() {
 				BeforeEach(func() {
 					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.0.1
-					`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.0.1
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -1672,10 +1703,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.0.1
-					`))
+tasks:
+	- key: foo
+		call: mint/setup-node 1.0.1
+`))
 				})
 
 				It("indicates a leaf could not be found", func() {
@@ -1694,10 +1725,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					majorLeafVersions["mint/setup-node"] = "1.0.3"
 
 					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.1.1
-					`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.1.1
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -1713,10 +1744,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.0.3
-					`))
+tasks:
+	- key: foo
+		call: mint/setup-node 1.0.3
+`))
 				})
 			})
 
@@ -1738,10 +1769,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				Context("while referencing the latest minor version", func() {
 					BeforeEach(func() {
 						err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.1.1
-						`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.1.1
+`), 0o644)
 						Expect(err).NotTo(HaveOccurred())
 					})
 
@@ -1749,10 +1780,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 						contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 						Expect(err).NotTo(HaveOccurred())
 						Expect(string(contents)).To(Equal(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.1.1
-						`))
+tasks:
+	- key: foo
+		call: mint/setup-node 1.1.1
+`))
 					})
 
 					It("indicates no leaves were updated", func() {
@@ -1763,10 +1794,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				Context("while not referencing the latest minor version", func() {
 					BeforeEach(func() {
 						err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.0.9
-						`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.0.9
+`), 0o644)
 						Expect(err).NotTo(HaveOccurred())
 					})
 
@@ -1774,10 +1805,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 						contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 						Expect(err).NotTo(HaveOccurred())
 						Expect(string(contents)).To(Equal(`
-					tasks:
-						- key: foo
-							call: mint/setup-node 1.1.1
-						`))
+tasks:
+	- key: foo
+		call: mint/setup-node 1.1.1
+`))
 					})
 
 					It("indicates that a leaf was updated", func() {
@@ -1829,17 +1860,17 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Expect(err).NotTo(HaveOccurred())
 
 					err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
-							tasks:
-								- key: foo
-									call: mint/setup-node 1.2.3
-						`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
 					err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
-							tasks:
-								- key: foo
-									call: mint/setup-node
-						`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
 					nestedDir := filepath.Join(mintDir, "some", "nested", "dir")
@@ -1847,10 +1878,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Expect(err).NotTo(HaveOccurred())
 
 					err = os.WriteFile(filepath.Join(nestedDir, "tasks.yaml"), []byte(`
-							tasks:
-								- key: foo
-									call: mint/setup-node # comment here
-						`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node # comment here
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -1930,10 +1961,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					majorLeafVersions["mint/setup-node"] = "1.3.0"
 
 					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-						tasks:
-							- key: foo
-								call: mint/setup-node 1.2.3
-						`), 0o644)
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+`), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -1949,10 +1980,10 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
-						tasks:
-							- key: foo
-								call: mint/setup-node 1.2.3
-						`))
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3
+`))
 				})
 
 				It("indicates no leaves were resolved", func() {
@@ -1967,6 +1998,9 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 			})
 
 			Context("when there are leaves to resolve across multiple files", func() {
+				var originalFooContents string
+				var originalBarContents string
+
 				BeforeEach(func() {
 					majorLeafVersions["mint/setup-node"] = "1.2.3"
 					majorLeafVersions["mint/setup-ruby"] = "1.0.1"
@@ -1974,22 +2008,24 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 					var err error
 
-					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-						tasks:
-							- key: foo
-								call: mint/setup-node # comment
-							- key: bar
-								call: mint/setup-ruby 0.0.1
-							- key: baz
-								call: mint/setup-go
-						`), 0o644)
+					originalFooContents = `
+tasks:
+	- key: foo
+		call: mint/setup-node # comment
+	- key: bar
+		call: mint/setup-ruby 0.0.1
+	- key: baz
+		call: mint/setup-go
+`
+					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(originalFooContents), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
-					err = os.WriteFile(filepath.Join(tmp, "bar.yaml"), []byte(`
-						tasks:
-							- key: foo
-								call: mint/setup-ruby
-						`), 0o644)
+					originalBarContents = `
+tasks:
+	- key: foo
+		call: mint/setup-ruby
+`
+					err = os.WriteFile(filepath.Join(tmp, "bar.yaml"), []byte(originalBarContents), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
@@ -2007,22 +2043,22 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
-						tasks:
-							- key: foo
-								call: mint/setup-node 1.2.3 # comment
-							- key: bar
-								call: mint/setup-ruby 0.0.1
-							- key: baz
-								call: mint/setup-go 1.3.5
-						`))
+tasks:
+	- key: foo
+		call: mint/setup-node 1.2.3 # comment
+	- key: bar
+		call: mint/setup-ruby 0.0.1
+	- key: baz
+		call: mint/setup-go 1.3.5
+`))
 
 					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
-						tasks:
-							- key: foo
-								call: mint/setup-ruby 1.0.1
-						`))
+tasks:
+	- key: foo
+		call: mint/setup-ruby 1.0.1
+`))
 				})
 
 				It("indicates leaves were resolved", func() {
@@ -2037,44 +2073,30 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-node → 1.2.3"))
 					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby → 1.0.1"))
 				})
-			})
 
-			Context("when a leaf cannot be found", func() {
-				BeforeEach(func() {
-					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
-						tasks:
-							- key: foo
-								call: mint/setup-node
-						`), 0o644)
-					Expect(err).NotTo(HaveOccurred())
-				})
+				Context("when a single file is targeted", func() {
+					It("resolves only the targeted file", func() {
+						var err error
 
-				It("does not modify the file", func() {
-					var err error
+						_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
+							DefaultDir:          tmp,
+							Files:               []string{filepath.Join(tmp, "bar.yaml")},
+							LatestVersionPicker: cli.PickLatestMajorVersion,
+						})
+						Expect(err).NotTo(HaveOccurred())
 
-					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          tmp,
-						LatestVersionPicker: cli.PickLatestMajorVersion,
+						contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(originalFooContents))
+
+						contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(`
+tasks:
+	- key: foo
+		call: mint/setup-ruby 1.0.1
+`))
 					})
-					Expect(err).NotTo(HaveOccurred())
-
-					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
-					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(Equal(`
-						tasks:
-							- key: foo
-								call: mint/setup-node
-						`))
-				})
-
-				It("indicates a leaf could not be found", func() {
-					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          tmp,
-						LatestVersionPicker: cli.PickLatestMajorVersion,
-					})
-
-					Expect(err).NotTo(HaveOccurred())
-					Expect(mockStderr.String()).To(ContainSubstring(`Unable to find the leaf "mint/setup-node"; skipping it.`))
 				})
 			})
 		})
@@ -2184,13 +2206,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`tasks:
+				err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
+tasks:
   - key: a
   - key: b
 `), 0o644)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`not-my-key:
+				err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
+not-my-key:
   - key: qux
    	call: mint/setup-node 1.2.3
 `), 0o644)
@@ -2210,7 +2234,8 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 				contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(contents)).To(Equal(`base:
+				Expect(string(contents)).To(Equal(`
+base:
   os: gentoo 99
   tag: 1.2
   arch: quantum
@@ -2228,10 +2253,54 @@ tasks:
 				// yaml file without tasks key is unaffected
 				contents, err = os.ReadFile(filepath.Join(mintDir, "baz.yaml"))
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(contents)).To(Equal(`not-my-key:
+				Expect(string(contents)).To(Equal(`
+not-my-key:
   - key: qux
    	call: mint/setup-node 1.2.3
 `))
+			})
+
+			It("adds base to only a targeted file", func() {
+				var err error
+
+				originalQuxContents := `
+tasks:
+  - key: a
+  - key: b
+`
+				err = os.WriteFile(filepath.Join(mintDir, "qux.yaml"), []byte(originalQuxContents), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
+					DefaultDir: mintDir,
+					Files:      []string{"bar.yaml"},
+					Arch:       "quantum",
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`
+base:
+  os: gentoo 99
+  tag: 1.2
+  arch: quantum
+
+tasks:
+  - key: a
+  - key: b
+`))
+
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to 1 file:\n\t%s\n",
+					"bar.yaml",
+				)))
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "qux.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(originalQuxContents))
 			})
 		})
 
