@@ -11,6 +11,10 @@ concurrency-pools:
     capacity: 1
     on-overflow: cancel-waiting
 
+base:
+  os: ubuntu 24.04
+  tag: 1.1
+
 tasks:
   - key: ci
     call: ${{ run.mint-dir }}/continuous_integration.yml
