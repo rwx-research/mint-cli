@@ -188,6 +188,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 
 	res, err := s.resolveLeavesForFiles(taskDefinitions, ResolveLeavesConfig{
 		DefaultDir:          cfg.MintDirectory,
+		Files:               []string{taskDefinitionYamlPath},
 		LatestVersionPicker: PickLatestMajorVersion,
 	})
 	if err != nil {
@@ -611,24 +612,17 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 		return errors.Wrap(err, "validation failed")
 	}
 
-	if len(cfg.Files) > 0 {
-		files = cfg.Files
-	} else {
-		mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
-		if err != nil {
-			return err
-		}
-
-		yamlFiles := make([]string, 0)
-		for _, entry := range s.yamlFilesInMintDirectory(mintDirectory) {
-			yamlFiles = append(yamlFiles, entry.OriginalPath)
-		}
-
-		files = yamlFiles
+	entries, err := s.getFileOrDirectoryYamlEntries(cfg.Files, cfg.DefaultDir)
+	if err != nil {
+		return err
 	}
 
-	if len(files) == 0 {
+	if len(entries) == 0 {
 		return errors.New(fmt.Sprintf("no files provided, and no yaml files found in directory %s", cfg.DefaultDir))
+	}
+
+	for _, entry := range entries {
+		files = append(files, entry.OriginalPath)
 	}
 
 	leafReferences, err := s.findLeafReferences(files)
@@ -733,12 +727,11 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 		return ResolveBaseResult{}, errors.Wrap(err, "validation failed")
 	}
 
-	mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
+	yamlFiles, err := s.getFileOrDirectoryYamlEntries(cfg.Files, cfg.DefaultDir)
 	if err != nil {
 		return ResolveBaseResult{}, err
 	}
 
-	yamlFiles := s.yamlFilesInMintDirectory(mintDirectory)
 	if len(yamlFiles) == 0 {
 		return ResolveBaseResult{}, fmt.Errorf("no files found in mint directory %q", cfg.DefaultDir)
 	}
@@ -1055,12 +1048,11 @@ func (s Service) ResolveLeaves(cfg ResolveLeavesConfig) (ResolveLeavesResult, er
 		return ResolveLeavesResult{}, errors.Wrap(err, "validation failed")
 	}
 
-	mintDirectory, err := s.mintDirectoryEntries(cfg.DefaultDir)
+	mintFiles, err := s.getFileOrDirectoryYamlEntries(cfg.Files, cfg.DefaultDir)
 	if err != nil {
 		return ResolveLeavesResult{}, err
 	}
 
-	mintFiles := s.yamlFilesInMintDirectory(mintDirectory)
 	result, err := s.resolveLeavesForFiles(mintFiles, cfg)
 	if err != nil {
 		return result, err
@@ -1345,11 +1337,7 @@ func (s Service) yamlFilesInMintDirectory(mintDirectory []api.MintDirectoryEntry
 	yamlEntries := make([]api.MintDirectoryEntry, 0)
 
 	for _, entry := range mintDirectory {
-		if entry.Type != "file" {
-			continue
-		}
-
-		if !strings.HasSuffix(entry.OriginalPath, ".yml") && !strings.HasSuffix(entry.OriginalPath, ".yaml") {
+		if !s.isYamlFile(entry) {
 			continue
 		}
 
@@ -1357,6 +1345,10 @@ func (s Service) yamlFilesInMintDirectory(mintDirectory []api.MintDirectoryEntry
 	}
 
 	return yamlEntries
+}
+
+func (s Service) isYamlFile(entry api.MintDirectoryEntry) bool {
+	return entry.Type == "file" && (strings.HasSuffix(entry.OriginalPath, ".yml") || strings.HasSuffix(entry.OriginalPath, ".yaml"))
 }
 
 func (s Service) findMintDirectoryPath(configuredDirectory string) (string, error) {
@@ -1387,6 +1379,37 @@ func (s Service) findMintDirectoryPath(configuredDirectory string) (string, erro
 		parentDir, _ := filepath.Split(workingDirectory)
 		workingDirectory = filepath.Clean(parentDir)
 	}
+}
+
+// getFileOrDirectoryYamlEntries returns a list of MintDirectoryEntry for the given files (if not empty)
+// or directory (if no files are provided).
+func (s Service) getFileOrDirectoryYamlEntries(files []string, mintDir string) ([]api.MintDirectoryEntry, error) {
+	var mintFiles []api.MintDirectoryEntry
+
+	if len(files) > 0 {
+		mintFiles = make([]api.MintDirectoryEntry, 0)
+
+		entries, err := s.mintDirectoryEntriesFromPaths(files)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if !s.isYamlFile(entry) {
+				continue
+			}
+
+			mintFiles = append(mintFiles, entry)
+		}
+	} else {
+		mintDirectory, err := s.mintDirectoryEntries(mintDir)
+		if err != nil {
+			return nil, err
+		}
+
+		mintFiles = s.yamlFilesInMintDirectory(mintDirectory)
+	}
+
+	return mintFiles, nil
 }
 
 func (s Service) outputLatestVersionMessage() {

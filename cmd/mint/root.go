@@ -71,4 +71,5 @@ func init() {
 	rootCmd.AddCommand(leavesCmd)
 	rootCmd.AddCommand(lintCmd)
 	rootCmd.AddCommand(resolveCmd)
+	rootCmd.AddCommand(updateCmd)
 }

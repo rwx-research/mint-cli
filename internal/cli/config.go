@@ -189,6 +189,7 @@ func (c UpdateLeavesConfig) Validate() error {
 
 type ResolveBaseConfig struct {
 	DefaultDir string
+	Files      []string
 	Os         string
 	Tag        string
 	Arch       string
@@ -250,6 +251,7 @@ func (r ResolveBaseResult) HasChanges() bool {
 
 type ResolveLeavesConfig struct {
 	DefaultDir          string
+	Files               []string
 	LatestVersionPicker func(versions api.LeafVersionsResult, leaf string, _ string) (string, error)
 }
 
