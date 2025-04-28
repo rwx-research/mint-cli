@@ -1,7 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"io/fs"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,36 +16,49 @@ import (
 	"github.com/rwx-research/mint-cli/internal/errors"
 )
 
-type YamlDoc struct {
-	astFile *ast.File
+const DefaultArch = "x86_64"
+
+type YAMLDoc struct {
+	astFile  *ast.File
+	original string
+	latest   *string
 }
 
-func ParseYamlDoc(contents string) (*YamlDoc, error) {
+func ParseYamlDoc(contents string) (*YAMLDoc, error) {
 	astFile, err := parser.ParseBytes([]byte(contents), parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
+	latest := astFile.String()
 
-	return &YamlDoc{astFile: astFile}, nil
+	return &YAMLDoc{astFile: astFile, original: latest, latest: &latest}, nil
 }
 
-func (doc *YamlDoc) Bytes() []byte {
+func (doc *YAMLDoc) Bytes() []byte {
 	return []byte(doc.String())
 }
 
-func (doc *YamlDoc) String() string {
-	return doc.astFile.String()
+func (doc *YAMLDoc) String() string {
+	if doc.latest == nil {
+		s := doc.astFile.String()
+		doc.latest = &s
+	}
+	return *doc.latest
 }
 
-func (doc *YamlDoc) HasBase() bool {
+func (doc *YAMLDoc) HasChanges() bool {
+	return doc.original != doc.String()
+}
+
+func (doc *YAMLDoc) HasBase() bool {
 	return doc.hasPath("$.base")
 }
 
-func (doc *YamlDoc) HasTasks() bool {
+func (doc *YAMLDoc) HasTasks() bool {
 	return doc.hasPath("$.tasks")
 }
 
-func (doc *YamlDoc) ReadStringAtPath(yamlPath string) (string, error) {
+func (doc *YAMLDoc) ReadStringAtPath(yamlPath string) (string, error) {
 	node, err := doc.getNodeAtPath(yamlPath)
 	if err != nil {
 		return "", err
@@ -50,7 +67,7 @@ func (doc *YamlDoc) ReadStringAtPath(yamlPath string) (string, error) {
 	return node.String(), nil
 }
 
-func (doc *YamlDoc) TryReadStringAtPath(yamlPath string) string {
+func (doc *YAMLDoc) TryReadStringAtPath(yamlPath string) string {
 	str, err := doc.ReadStringAtPath(yamlPath)
 	if err != nil {
 		return ""
@@ -58,7 +75,7 @@ func (doc *YamlDoc) TryReadStringAtPath(yamlPath string) string {
 	return str
 }
 
-func (doc *YamlDoc) InsertOrUpdateBase(spec BaseLayerSpec) error {
+func (doc *YAMLDoc) InsertOrUpdateBase(spec BaseLayerSpec) error {
 	base := map[string]any{
 		"os": spec.Os,
 	}
@@ -74,7 +91,7 @@ func (doc *YamlDoc) InsertOrUpdateBase(spec BaseLayerSpec) error {
 		base["tag"] = spec.Tag
 	}
 
-	if spec.Arch != "" && spec.Arch != "x86_64" {
+	if spec.Arch != "" && spec.Arch != DefaultArch {
 		base["arch"] = spec.Arch
 	}
 
@@ -87,7 +104,7 @@ func (doc *YamlDoc) InsertOrUpdateBase(spec BaseLayerSpec) error {
 	}
 }
 
-func (doc *YamlDoc) InsertBefore(beforeYamlPath string, value any) error {
+func (doc *YAMLDoc) InsertBefore(beforeYamlPath string, value any) error {
 	if strings.Count(beforeYamlPath, ".") != 1 {
 		return errors.New("must provide a root yaml field in the form of \"$.fieldname\"")
 	}
@@ -123,17 +140,15 @@ func (doc *YamlDoc) InsertBefore(beforeYamlPath string, value any) error {
 	toInsert := fmt.Appendf([]byte(node.String()), "\n\n")
 	result := slices.Insert([]byte(doc.astFile.String()), idx, toInsert...)
 
-	updatedDoc, err := ParseYamlDoc(string(result))
+	err = doc.reparseAst(string(result))
 	if err != nil {
 		return err
 	}
 
-	*doc = *updatedDoc
-
 	return nil
 }
 
-func (doc *YamlDoc) MergeAtPath(yamlPath string, value any) error {
+func (doc *YAMLDoc) MergeAtPath(yamlPath string, value any) error {
 	p, err := yaml.PathString(yamlPath)
 	if err != nil {
 		panic(err)
@@ -144,10 +159,16 @@ func (doc *YamlDoc) MergeAtPath(yamlPath string, value any) error {
 		return err
 	}
 
-	return p.MergeFromNode(doc.astFile, node)
+	err = p.MergeFromNode(doc.astFile, node)
+	if err != nil {
+		return err
+	}
+
+	doc.modified()
+	return nil
 }
 
-func (doc *YamlDoc) ReplaceAtPath(yamlPath string, replacement any) error {
+func (doc *YAMLDoc) ReplaceAtPath(yamlPath string, replacement any) error {
 	p, err := yaml.PathString(yamlPath)
 	if err != nil {
 		panic(err)
@@ -163,10 +184,16 @@ func (doc *YamlDoc) ReplaceAtPath(yamlPath string, replacement any) error {
 		return err
 	}
 
-	return p.ReplaceWithNode(doc.astFile, node)
+	err = p.ReplaceWithNode(doc.astFile, node)
+	if err != nil {
+		return err
+	}
+
+	doc.modified()
+	return nil
 }
 
-func (doc *YamlDoc) SetAtPath(yamlPath string, value any) error {
+func (doc *YAMLDoc) SetAtPath(yamlPath string, value any) error {
 	pathParts := strings.Split(yamlPath, ".")
 	field := pathParts[len(pathParts)-1]
 
@@ -183,10 +210,55 @@ func (doc *YamlDoc) SetAtPath(yamlPath string, value any) error {
 		return err
 	}
 
-	return path.MergeFromNode(doc.astFile, node)
+	err = path.MergeFromNode(doc.astFile, node)
+	if err != nil {
+		return err
+	}
+
+	doc.modified()
+	return nil
 }
 
-func (doc *YamlDoc) getNodeAtPath(yamlPath string) (ast.Node, error) {
+func (doc *YAMLDoc) ForEachNode(yamlPath string, f func(node ast.Node) error) error {
+	node, err := doc.getNodeAtPath(yamlPath)
+	if err != nil {
+		return err
+	}
+
+	seqNode, ok := node.(*ast.SequenceNode)
+	if !ok {
+		return fmt.Errorf("expected sequence node, got %T", node)
+	}
+
+	for _, valueNode := range seqNode.Values {
+		if valueNode == nil {
+			continue
+		}
+		if err := f(valueNode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (doc *YAMLDoc) WriteTo(w io.Writer) (int64,error) {
+	b := bytes.NewBuffer(doc.Bytes())
+	return io.Copy(w, b)
+}
+
+func (doc *YAMLDoc) WriteFile(path string) error {
+	// Inherit permissions from the existing file if it exists
+	var mode fs.FileMode
+	if fi, err := os.Stat(path); err == nil {
+		mode = fi.Mode()
+	} else {
+		mode = fs.FileMode(0644)
+	}
+
+	return os.WriteFile(path, doc.Bytes(), mode)
+}
+
+func (doc *YAMLDoc) getNodeAtPath(yamlPath string) (ast.Node, error) {
 	p, err := yaml.PathString(yamlPath)
 	if err != nil {
 		panic(err)
@@ -195,11 +267,34 @@ func (doc *YamlDoc) getNodeAtPath(yamlPath string) (ast.Node, error) {
 	return p.FilterFile(doc.astFile)
 }
 
-func (doc *YamlDoc) hasPath(yamlPath string) bool {
+func (doc *YAMLDoc) hasPath(yamlPath string) bool {
 	_, err := doc.getNodeAtPath(yamlPath)
 	if err != nil {
 		return false
 	}
 
 	return true
+}
+
+func (doc *YAMLDoc) modified() {
+	doc.latest = nil
+}
+
+func (doc *YAMLDoc) reparseAst(contents string) error {
+	astFile, err := parser.ParseBytes([]byte(contents), parser.ParseComments)
+	if err != nil {
+		return err
+	}
+
+	doc.astFile = astFile
+	doc.latest = nil
+	return nil
+}
+
+func isYAMLSyntaxError(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := err.(*yaml.SyntaxError)
+	return ok
 }

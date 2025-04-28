@@ -1439,15 +1439,15 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 
 					err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
+  - key: foo
+    call: mint/setup-node 1.2.3
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
 					err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
+  - key: foo
+    call: mint/setup-node 1.2.3
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
@@ -1457,8 +1457,8 @@ tasks:
 
 					err = os.WriteFile(filepath.Join(nestedDir, "tasks.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
+  - key: foo
+    call: mint/setup-node 1.2.3
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -1541,8 +1541,8 @@ tasks:
 
 					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
+  - key: foo
+    call: mint/setup-node 1.2.3
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -1560,8 +1560,8 @@ tasks:
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
+  - key: foo
+    call: mint/setup-node 1.2.3
 `))
 				})
 
@@ -1589,20 +1589,20 @@ tasks:
 
 					originalFooContents = `
 tasks:
-	- key: foo
-		call: mint/setup-node 1.0.1
-	- key: bar
-		call: mint/setup-ruby 0.0.1
-	- key: baz
-		call: mint/setup-go
+  - key: foo
+    call: mint/setup-node 1.0.1
+  - key: bar
+    call: mint/setup-ruby 0.0.1
+  - key: baz
+    call: mint/setup-go
 `
 					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(originalFooContents), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
 					originalBarContents = `
 tasks:
-	- key: foo
-		call: mint/setup-ruby 1.0.0
+  - key: foo
+    call: mint/setup-ruby 1.0.0
 `
 					err = os.WriteFile(filepath.Join(tmp, "bar.yaml"), []byte(originalBarContents), 0o644)
 					Expect(err).NotTo(HaveOccurred())
@@ -1621,22 +1621,20 @@ tasks:
 
 					contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(Equal(`
-tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
-	- key: bar
-		call: mint/setup-ruby 1.0.1
-	- key: baz
-		call: mint/setup-go 1.3.5
+					Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-node 1.2.3
+  - key: bar
+    call: mint/setup-ruby 1.0.1
+  - key: baz
+    call: mint/setup-go 1.3.5
 `))
 
 					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
 					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(Equal(`
-tasks:
-	- key: foo
-		call: mint/setup-ruby 1.0.1
+					Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-ruby 1.0.1
 `))
 				})
 
@@ -1672,10 +1670,9 @@ tasks:
 
 						contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
 						Expect(err).NotTo(HaveOccurred())
-						Expect(string(contents)).To(Equal(`
-tasks:
-	- key: foo
-		call: mint/setup-ruby 1.0.1
+						Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-ruby 1.0.1
 `))
 					})
 				})
@@ -1685,8 +1682,8 @@ tasks:
 				BeforeEach(func() {
 					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.0.1
+  - key: foo
+    call: mint/setup-node 1.0.1
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -1704,8 +1701,8 @@ tasks:
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.0.1
+  - key: foo
+    call: mint/setup-node 1.0.1
 `))
 				})
 
@@ -1726,8 +1723,8 @@ tasks:
 
 					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.1.1
+  - key: foo
+    call: mint/setup-node 1.1.1
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -1743,10 +1740,9 @@ tasks:
 
 					contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(Equal(`
-tasks:
-	- key: foo
-		call: mint/setup-node 1.0.3
+					Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-node 1.0.3
 `))
 				})
 			})
@@ -1770,8 +1766,8 @@ tasks:
 					BeforeEach(func() {
 						err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.1.1
+  - key: foo
+    call: mint/setup-node 1.1.1
 `), 0o644)
 						Expect(err).NotTo(HaveOccurred())
 					})
@@ -1781,8 +1777,8 @@ tasks:
 						Expect(err).NotTo(HaveOccurred())
 						Expect(string(contents)).To(Equal(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.1.1
+  - key: foo
+    call: mint/setup-node 1.1.1
 `))
 					})
 
@@ -1795,8 +1791,8 @@ tasks:
 					BeforeEach(func() {
 						err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.0.9
+  - key: foo
+    call: mint/setup-node 1.0.9
 `), 0o644)
 						Expect(err).NotTo(HaveOccurred())
 					})
@@ -1804,10 +1800,9 @@ tasks:
 					It("updates the file", func() {
 						contents, err := os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 						Expect(err).NotTo(HaveOccurred())
-						Expect(string(contents)).To(Equal(`
-tasks:
-	- key: foo
-		call: mint/setup-node 1.1.1
+						Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-node 1.1.1
 `))
 					})
 
@@ -1861,15 +1856,15 @@ tasks:
 
 					err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
+  - key: foo
+    call: mint/setup-node 1.2.3
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
 					err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node
+  - key: foo
+    call: mint/setup-node
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
@@ -1879,8 +1874,8 @@ tasks:
 
 					err = os.WriteFile(filepath.Join(nestedDir, "tasks.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node # comment here
+  - key: foo
+    call: mint/setup-node
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -1914,7 +1909,7 @@ tasks:
 
 					contents, err = os.ReadFile(filepath.Join(mintDir, "some", "nested", "dir", "tasks.yaml"))
 					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0 # comment here"))
+					Expect(string(contents)).To(ContainSubstring("mint/setup-node 1.3.0"))
 				})
 			})
 		})
@@ -1962,8 +1957,8 @@ tasks:
 
 					err := os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
+  - key: foo
+    call: mint/setup-node 1.2.3
 `), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 				})
@@ -1981,8 +1976,8 @@ tasks:
 					Expect(err).NotTo(HaveOccurred())
 					Expect(string(contents)).To(Equal(`
 tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3
+  - key: foo
+    call: mint/setup-node 1.2.3
 `))
 				})
 
@@ -2010,20 +2005,20 @@ tasks:
 
 					originalFooContents = `
 tasks:
-	- key: foo
-		call: mint/setup-node # comment
-	- key: bar
-		call: mint/setup-ruby 0.0.1
-	- key: baz
-		call: mint/setup-go
+  - key: foo
+    call: mint/setup-node
+  - key: bar
+    call: mint/setup-ruby 0.0.1
+  - key: baz
+    call: mint/setup-go
 `
 					err = os.WriteFile(filepath.Join(tmp, "foo.yaml"), []byte(originalFooContents), 0o644)
 					Expect(err).NotTo(HaveOccurred())
 
 					originalBarContents = `
 tasks:
-	- key: foo
-		call: mint/setup-ruby
+  - key: foo
+    call: mint/setup-ruby
 `
 					err = os.WriteFile(filepath.Join(tmp, "bar.yaml"), []byte(originalBarContents), 0o644)
 					Expect(err).NotTo(HaveOccurred())
@@ -2042,22 +2037,20 @@ tasks:
 
 					contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
 					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(Equal(`
-tasks:
-	- key: foo
-		call: mint/setup-node 1.2.3 # comment
-	- key: bar
-		call: mint/setup-ruby 0.0.1
-	- key: baz
-		call: mint/setup-go 1.3.5
+					Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-node 1.2.3
+  - key: bar
+    call: mint/setup-ruby 0.0.1
+  - key: baz
+    call: mint/setup-go 1.3.5
 `))
 
 					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
 					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(Equal(`
-tasks:
-	- key: foo
-		call: mint/setup-ruby 1.0.1
+					Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-ruby 1.0.1
 `))
 				})
 
@@ -2091,10 +2084,9 @@ tasks:
 
 						contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
 						Expect(err).NotTo(HaveOccurred())
-						Expect(string(contents)).To(Equal(`
-tasks:
-	- key: foo
-		call: mint/setup-ruby 1.0.1
+						Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-ruby 1.0.1
 `))
 					})
 				})
@@ -2216,7 +2208,7 @@ tasks:
 				err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
 not-my-key:
   - key: qux
-   	call: mint/setup-node 1.2.3
+    call: mint/setup-node 1.2.3
 `), 0o644)
 				Expect(err).NotTo(HaveOccurred())
 			})
@@ -2255,7 +2247,7 @@ tasks:
 				Expect(string(contents)).To(Equal(`
 not-my-key:
   - key: qux
-   	call: mint/setup-node 1.2.3
+    call: mint/setup-node 1.2.3
 `))
 			})
 
