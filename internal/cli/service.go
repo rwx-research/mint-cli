@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -167,7 +166,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		return nil
 	}
 
-	addBaseIfNeeded, err := s.resolveBaseForFiles(taskDefinitions, BaseLayerSpec{})
+	addBaseIfNeeded, err := s.resolveOrUpdateBaseForFiles(taskDefinitions, BaseLayerSpec{}, false)
 	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to resolve base")
@@ -719,7 +718,29 @@ func (s Service) findLeafReferences(files []string) (map[string]map[string][]str
 	return matches, nil
 }
 
-var reTasks = regexp.MustCompile(`(?m)^tasks:`)
+func (s Service) UpdateBase(cfg UpdateBaseConfig) (ResolveBaseResult, error) {
+	err := cfg.Validate()
+	if err != nil {
+		return ResolveBaseResult{}, errors.Wrap(err, "validation failed")
+	}
+
+	yamlFiles, err := s.getFileOrDirectoryYamlEntries(cfg.Files, cfg.DefaultDir)
+	if err != nil {
+		return ResolveBaseResult{}, err
+	}
+
+	if len(yamlFiles) == 0 {
+		return ResolveBaseResult{}, fmt.Errorf("no files found in mint directory %q", cfg.DefaultDir)
+	}
+
+	result, err := s.resolveOrUpdateBaseForFiles(yamlFiles, BaseLayerSpec{}, true)
+	s.outputLatestVersionMessage()
+	if err != nil {
+		return ResolveBaseResult{}, err
+	}
+
+	return result, nil
+}
 
 func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 	err := cfg.Validate()
@@ -742,7 +763,7 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 		Arch: cfg.Arch,
 	}
 
-	result, err := s.resolveBaseForFiles(yamlFiles, requestedSpec)
+	result, err := s.resolveOrUpdateBaseForFiles(yamlFiles, requestedSpec, false)
 	s.outputLatestVersionMessage()
 	if err != nil {
 		return ResolveBaseResult{}, err
@@ -781,34 +802,64 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 	return result, nil
 }
 
-func (s Service) resolveBaseForFiles(mintFiles []api.MintDirectoryEntry, requestedSpec BaseLayerSpec) (ResolveBaseResult, error) {
+func isJSON(content []byte) bool {
+	var jsonContent any
+	return len(content) > 0 && content[0] == '{' && json.Unmarshal(content, &jsonContent) == nil
+}
+
+func (s Service) getFilesForBaseResolveOrUpdate(mintFiles []api.MintDirectoryEntry, requestedSpec BaseLayerSpec, update bool) ([]BaseLayerRunFile, error) {
 	runFiles := make([]BaseLayerRunFile, 0)
 
 	for _, entry := range mintFiles {
 		content, err := os.ReadFile(entry.OriginalPath)
 		if err != nil {
-			return ResolveBaseResult{}, err
+			return nil, err
+		}
+
+		// JSON is valid YAML, but we don't support modifying it
+		if isJSON(content) {
+			continue
+		}
+
+		doc, err := ParseYamlDoc(string(content))
+		if err != nil {
+			// Skip files that are not valid YAML
+			if _, ok := err.(*yaml.SyntaxError); ok {
+				continue
+			}
+			return nil, err
+		}
+
+		// Skip files that don't have a 'tasks' key
+		if !doc.HasTasks() {
+			continue
+		}
+
+		// Skip files that already define a 'base' with at least 'os' and 'tag'
+		if !update && doc.HasBase() && doc.TryReadStringAtPath("$.base.os") != "" && doc.TryReadStringAtPath("$.base.tag") != "" {
+			continue
 		}
 
 		parsed := struct {
 			Base BaseLayerSpec `yaml:"base"`
 		}{}
-		if err = yaml.Unmarshal(content, &parsed); err == nil {
-			// Skip any files that already define a 'base' with at least 'os' and 'tag'
-			if parsed.Base.Os != "" && parsed.Base.Tag != "" {
-				continue
-			}
-		}
-
-		// Skip files that don't have a 'tasks' key
-		if !reTasks.Match(content) {
-			continue
+		if err = yaml.Unmarshal(content, &parsed); err != nil {
+			return nil, err
 		}
 
 		runFiles = append(runFiles, BaseLayerRunFile{
 			Spec:     requestedSpec.Merge(parsed.Base),
 			Filepath: entry.OriginalPath,
 		})
+	}
+
+	return runFiles, nil
+}
+
+func (s Service) resolveOrUpdateBaseForFiles(mintFiles []api.MintDirectoryEntry, requestedSpec BaseLayerSpec, update bool) (ResolveBaseResult, error) {
+	runFiles, err := s.getFilesForBaseResolveOrUpdate(mintFiles, requestedSpec, update)
+	if err != nil {
+		return ResolveBaseResult{}, err
 	}
 
 	if len(runFiles) == 0 {
@@ -853,7 +904,9 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 		specToResolved[runFile.Spec] = runFile.Spec
 	}
 
-	errs, _ := errgroup.WithContext(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	errs, _ := errgroup.WithContext(ctx)
 	errs.SetLimit(3)
 
 	for spec := range specToResolved {
@@ -883,126 +936,6 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 	return specToResolved, nil
 }
 
-func (s Service) ensureBaseSection(input []byte, base BaseLayerSpec) ([]byte, error) {
-	scanner := bufio.NewScanner(bytes.NewReader(input))
-	var lines []string
-	tasksLineIndex := -1 // 0-based index of the root 'tasks:' line
-	baseStartIndex := -1 // 0-based index of the root 'base:' line
-
-	// Read all lines to find root 'tasks:' and 'base:' indices
-	lineIdx := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		lines = append(lines, line)
-
-		// Check if the line is a root key (no leading whitespace)
-		trimmedLine := strings.TrimLeft(line, " \t")
-		isRootKey := len(trimmedLine) > 0 && trimmedLine == line
-
-		if isRootKey {
-			if line == "tasks:" && tasksLineIndex == -1 {
-				tasksLineIndex = lineIdx
-			}
-			if line == "base:" && baseStartIndex == -1 {
-				baseStartIndex = lineIdx
-			}
-		}
-		lineIdx++
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error scanning input data: %w", err)
-	}
-
-	// Ensure the root 'tasks:' key was found
-	if tasksLineIndex == -1 {
-		if len(lines) == 0 {
-			return nil, fmt.Errorf("input is empty, required 'tasks:' key not found")
-		}
-		return nil, fmt.Errorf("root 'tasks:' key not found in input YAML")
-	}
-
-	// If there is already a 'base' field, find the end of it.
-	// If 'arch' is already there, keep the entire line (eg. trailing comments).
-	existingArchLine := ""
-	baseEndIndex := -1 // Index of the line after the base field
-
-	if baseStartIndex != -1 {
-		// Find the end of the base field and look for 'arch' within it
-		baseEndIndex = len(lines) // Default if base is the last element in the file
-		for i := baseStartIndex + 1; i < len(lines); i++ {
-			line := lines[i]
-
-			// A root base field ends when a line is encountered that is not indented.
-			// An empty line does not necessarily end the field.
-			if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
-				baseEndIndex = i
-				break
-			}
-
-			// Look for the 'arch' key within the field
-			trimmedLine := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmedLine, "arch:") {
-				// Verify it's likely a direct key under base:
-				// It must start with whitespace, and 'arch:' must follow that whitespace.
-				if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
-					// Find where 'arch:' starts
-					archIndex := strings.Index(line, "arch:")
-					if archIndex > 0 {
-						// Check if the part before 'arch:' is only whitespace
-						if strings.TrimSpace(line[:archIndex]) == "" {
-							existingArchLine = line // Preserve original line with indentation
-							// Continue searching until baseEndIndex is determined accurately
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Construct the lines for the new/updated base field.
-	// We always add os and tag using standard two-space ("  ") indentation.
-	// If an original arch line was found, we append it to the new field.
-	newBaseLines := []string{"base:", fmt.Sprintf("  os: %s", base.Os), fmt.Sprintf("  tag: %s", base.Tag)}
-	if existingArchLine != "" {
-		newBaseLines = append(newBaseLines, existingArchLine)
-	} else if base.Arch != "" && base.Arch != "x86_64" {
-		newBaseLines = append(newBaseLines, fmt.Sprintf("  arch: %s", base.Arch))
-	}
-	newBaseLines = append(newBaseLines, "")
-
-	var outputLines []string
-
-	if baseStartIndex != -1 {
-		// Base exists: Replace the old base field range with the new lines
-		if baseStartIndex > 0 {
-			outputLines = append(outputLines, lines[0:baseStartIndex]...)
-		}
-
-		outputLines = append(outputLines, newBaseLines...)
-
-		if baseEndIndex < len(lines) {
-			outputLines = append(outputLines, lines[baseEndIndex:]...)
-		}
-	} else {
-		// Base doesn't exist: Insert new base field before the 'tasks' field
-		if tasksLineIndex > 0 {
-			outputLines = append(outputLines, lines[0:tasksLineIndex]...)
-		}
-
-		outputLines = append(outputLines, newBaseLines...)
-		outputLines = append(outputLines, lines[tasksLineIndex:]...)
-	}
-
-	finalOutput := strings.Join(outputLines, "\n")
-
-	// Add a trailing newline if the original data had content
-	if len(input) > 0 && len(finalOutput) > 0 && !strings.HasSuffix(finalOutput, "\n") {
-		finalOutput += "\n"
-	}
-
-	return []byte(finalOutput), nil
-}
-
 func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile, resolvedBase BaseLayerSpec) error {
 	fi, err := os.Stat(runFile.Filepath)
 	if err != nil {
@@ -1021,11 +954,16 @@ func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile, resolvedBase Bas
 		return err
 	}
 
-	newContent, err := s.ensureBaseSection(content, resolvedBase)
+	doc, err := ParseYamlDoc(string(content))
 	if err != nil {
 		return err
 	}
 
+	if err := doc.InsertOrUpdateBase(resolvedBase); err != nil {
+		return err
+	}
+
+	newContent := doc.Bytes()
 	if bytes.Equal(content, newContent) {
 		return nil
 	}

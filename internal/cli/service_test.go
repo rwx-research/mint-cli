@@ -2234,11 +2234,10 @@ not-my-key:
 
 				contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(contents)).To(Equal(`
-base:
+				Expect(string(contents)).To(Equal(`base:
+  arch: quantum
   os: gentoo 99
   tag: 1.2
-  arch: quantum
 
 tasks:
   - key: a
@@ -2282,11 +2281,10 @@ tasks:
 
 				contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(contents)).To(Equal(`
-base:
+				Expect(string(contents)).To(Equal(`base:
+  arch: quantum
   os: gentoo 99
   tag: 1.2
-  arch: quantum
 
 tasks:
   - key: a
@@ -2314,7 +2312,7 @@ tasks:
 
 				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
-    push:
+    push: {}
 
 base:
   os: gentoo 99
@@ -2340,7 +2338,7 @@ tasks:
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(contents)).To(Equal(`on:
   github:
-    push:
+    push: {}
 
 base:
   os: gentoo 99
@@ -2368,11 +2366,11 @@ tasks:
 
 				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
-    push:
+    push: {}
 
 base:
   os: gentoo 99
-  arch: quantum # comment persists
+  arch: quantum # comment removed
 
 tasks:
   - key: a
@@ -2395,12 +2393,12 @@ tasks:
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(contents)).To(Equal(`on:
   github:
-    push:
+    push: {}
 
 base:
   os: gentoo 99
+  arch: quantum
   tag: 1.2
-  arch: quantum # comment persists
 
 tasks:
   - key: a
@@ -2424,7 +2422,7 @@ tasks:
 
 				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
-    push:
+    push: {}
 
 tasks:
   - key: a
@@ -2449,7 +2447,7 @@ base:
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(contents)).To(Equal(`on:
   github:
-    push:
+    push: {}
 
 tasks:
   - key: a
@@ -2483,6 +2481,7 @@ base:
 
 				err = os.WriteFile(filepath.Join(mintDir, "two.yaml"), []byte(`base:
   os: gentoo 88
+
 tasks:
   - key: c
   - key: d

@@ -169,6 +169,24 @@ func (c SetSecretsInVaultConfig) Validate() error {
 	return nil
 }
 
+type UpdateBaseConfig struct {
+	DefaultDir               string
+	Files                    []string
+	ReplacementVersionPicker func(versions api.LeafVersionsResult, leaf string, major string) (string, error) // TODO: no
+}
+
+func (c UpdateBaseConfig) Validate() error {
+	if len(c.Files) == 0 && c.DefaultDir == "" {
+		return errors.New("a default directory must be provided if not specifying files explicitly")
+	}
+
+	if c.ReplacementVersionPicker == nil {
+		return errors.New("a replacement version picker must be provided")
+	}
+
+	return nil
+}
+
 type UpdateLeavesConfig struct {
 	DefaultDir               string
 	Files                    []string
