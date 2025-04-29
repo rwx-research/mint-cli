@@ -618,7 +618,7 @@ var _ = Describe("CLI Service", func() {
 				It("returns an error", func() {
 					_, err := service.InitiateRun(runConfig)
 					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring("could not be found"))
+					Expect(err.Error()).To(ContainSubstring("unable to find .mint directory"))
 				})
 			})
 		})
@@ -2155,7 +2155,7 @@ tasks:
 				})
 
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("no files found in mint directory %q", mintDir)))
+				Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("no files provided, and no yaml files found in directory %s", mintDir)))
 			})
 		})
 

@@ -7,10 +7,11 @@ import (
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
@@ -27,7 +28,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const DefaultArch = "x86_64"
+
 var HandledError = errors.New("handled error")
+var hasOutputVersionMessage atomic.Bool
 
 // Service holds the main business logic of the CLI.
 type Service struct {
@@ -44,6 +48,7 @@ func NewService(cfg Config) (Service, error) {
 
 // DebugRunConfig will connect to a running task over SSH. Key exchange is facilitated over the Cloud API.
 func (s Service) DebugTask(cfg DebugTaskConfig) error {
+	defer s.outputLatestVersionMessage()
 	err := cfg.Validate()
 	if err != nil {
 		return errors.Wrap(err, "validation failed")
@@ -104,15 +109,16 @@ func (s Service) DebugTask(cfg DebugTaskConfig) error {
 
 // InitiateRun will connect to the Cloud API and start a new run in Mint.
 func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, error) {
+	defer s.outputLatestVersionMessage()
 	err := cfg.Validate()
 	if err != nil {
 		return nil, errors.Wrap(err, "validation failed")
 	}
 
-	mintDirectory := make([]api.MintDirectoryEntry, 0)
-	taskDefinitionYamlPath := cfg.MintFilePath
+	var mintDirectory []MintDirectoryEntry
+	runDefinitionPath := cfg.MintFilePath
 
-	mintDirectoryPath, err := findMintDirectoryPath(cfg.MintDirectory)
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.MintDirectory)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to find .mint directory")
 	}
@@ -128,31 +134,23 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 			return nil, err
 		}
 
-		mintDirInfo, err := os.Stat(mintDirectoryPath)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to read the .mint directory at %q", mintDirectoryPath)
-		}
-
-		if !mintDirInfo.IsDir() {
-			return nil, fmt.Errorf("The .mint directory at %q is not a directory", mintDirectoryPath)
-		}
-
 		mintDirectory = mintDirectoryEntries
 	}
 
-	taskDefinitions, err := mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
+	runDefinition, err := mintDirectoryEntriesFromPaths([]string{runDefinitionPath})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read provided files")
 	}
-	if len(taskDefinitions) != 1 {
-		return nil, fmt.Errorf("Expected exactly 1 run definition, got %d", len(taskDefinitions))
+	runDefinition = filterFiles(runDefinition)
+	if len(runDefinition) != 1 {
+		return nil, fmt.Errorf("expected exactly 1 run definition, got %d", len(runDefinition))
 	}
 
+	// reloadRunDefinitions reloads run definitions after modifying the file.
 	reloadRunDefinitions := func() error {
-		// Reload run definitions after modifying the file
-		taskDefinitions, err = mintDirectoryEntriesFromPaths([]string{taskDefinitionYamlPath})
+		runDefinition, err = mintDirectoryEntriesFromPaths([]string{runDefinitionPath})
 		if err != nil {
-			return errors.Wrapf(err, "unable to reload %q", taskDefinitionYamlPath)
+			return errors.Wrapf(err, "unable to reload %q", runDefinitionPath)
 		}
 		if mintDirectoryPath != "" {
 			mintDirectoryEntries, err := mintDirectoryEntries(mintDirectoryPath)
@@ -165,8 +163,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 		return nil
 	}
 
-	addBaseIfNeeded, err := s.resolveOrUpdateBaseForFiles(taskDefinitions, BaseLayerSpec{}, false)
-	s.outputLatestVersionMessage()
+	addBaseIfNeeded, err := s.resolveOrUpdateBaseForFiles(runDefinition, BaseLayerSpec{}, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to resolve base")
 	}
@@ -177,14 +174,14 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 			return nil, errors.New("unable to determine OS")
 		}
 
-		fmt.Fprintf(s.Stderr, "Configured %q to run on %s\n\n", taskDefinitionYamlPath, update.ResolvedBase.Os)
+		fmt.Fprintf(s.Stderr, "Configured %q to run on %s\n\n", runDefinitionPath, update.ResolvedBase.Os)
 
 		if err = reloadRunDefinitions(); err != nil {
 			return nil, err
 		}
 	}
 
-	mintFiles := filterYAMLFilesForModification(taskDefinitions, func(doc *YAMLDoc) bool {
+	mintFiles := filterYAMLFilesForModification(runDefinition, func(doc *YAMLDoc) bool {
 		return true
 	})
 	resolvedLeaves, err := s.resolveOrUpdateLeavesForFiles(mintFiles, false, PickLatestMajorVersion)
@@ -214,7 +211,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 
 	runResult, err := s.APIClient.InitiateRun(api.InitiateRunConfig{
 		InitializationParameters: initializationParameters,
-		TaskDefinitions:          taskDefinitions,
+		TaskDefinitions:          runDefinition,
 		MintDirectory:            mintDirectory,
 		TargetedTaskKeys:         cfg.TargetedTasks,
 		Title:                    cfg.Title,
@@ -228,6 +225,7 @@ func (s Service) InitiateRun(cfg InitiateRunConfig) (*api.InitiateRunResult, err
 }
 
 func (s Service) InitiateDispatch(cfg InitiateDispatchConfig) (*api.InitiateDispatchResult, error) {
+	defer s.outputLatestVersionMessage()
 	err := cfg.Validate()
 	if err != nil {
 		return nil, errors.Wrap(err, "validation failed")
@@ -239,7 +237,6 @@ func (s Service) InitiateDispatch(cfg InitiateDispatchConfig) (*api.InitiateDisp
 		Ref:         cfg.Ref,
 		Title:       cfg.Title,
 	})
-	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to initiate dispatch")
 	}
@@ -248,6 +245,7 @@ func (s Service) InitiateDispatch(cfg InitiateDispatchConfig) (*api.InitiateDisp
 }
 
 func (s Service) GetDispatch(cfg GetDispatchConfig) ([]GetDispatchRun, error) {
+	defer s.outputLatestVersionMessage()
 	dispatchResult, err := s.APIClient.GetDispatch(api.GetDispatchConfig{
 		DispatchId: cfg.DispatchId,
 	})
@@ -279,99 +277,82 @@ func (s Service) GetDispatch(cfg GetDispatchConfig) ([]GetDispatchRun, error) {
 }
 
 func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
+	defer s.outputLatestVersionMessage()
 	err := cfg.Validate()
 	if err != nil {
 		return nil, errors.Wrap(err, "validation failed")
 	}
 
-	configFilePaths := cfg.MintFilePaths
+	targetedEntries, err := mintDirectoryEntriesFromPaths(cfg.MintFilePaths)
+	if err != nil {
+		return nil, err
+	}
+	targetedEntries = filterYAMLFiles(targetedEntries)
+	targetedEntries = removeDuplicates(targetedEntries, func(entry MintDirectoryEntry) string {
+		return entry.Path
+	})
 
-	// Ensure both the provided paths and everything in the MintDirectory is loaded.
-	mintDirectoryPath, err := findMintDirectoryPath(cfg.MintDirectory)
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.MintDirectory)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to find .mint directory")
 	}
+
+	var mintDirEntries []MintDirectoryEntry
 	if mintDirectoryPath != "" {
-		configFilePaths = append(configFilePaths, mintDirectoryPath)
-	}
-	configFilePaths = removeDuplicateStrings(configFilePaths)
-
-	taskDefinitionYamlPaths := make([]string, 0)
-	for _, fileOrDir := range configFilePaths {
-		fi, err := os.Stat(fileOrDir)
+		mdEntries, err := mintDirectoryEntries(mintDirectoryPath)
 		if err != nil {
-			if errors.Is(err, errors.ErrFileNotExists) {
-				return nil, fmt.Errorf("you specified %q, but %q could not be found", fileOrDir, fileOrDir)
-			}
-			return nil, errors.Wrap(err, "unable to find file or directory")
+			return nil, err
 		}
 
-		if fi.IsDir() {
-			mintDirectory, err := mintDirectoryEntries(fileOrDir)
-			if err != nil {
-				return nil, errors.Wrap(err, "unable to find yaml files in directory")
-			}
+		// Ensure both the provided paths and everything in the MintDirectory is loaded.
+		mdEntries = filterYAMLFiles(mdEntries)
+		mdEntries = removeDuplicates(mdEntries, func(entry MintDirectoryEntry) string {
+			return entry.Path
+		})
 
-			for _, entry := range filterYAMLFiles(mintDirectory) {
-				taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, entry.OriginalPath)
+		for _, entry := range mdEntries {
+			// Don't duplicate targeted files that are also in .mint
+			if slices.ContainsFunc(targetedEntries, func(te MintDirectoryEntry) bool {
+				return te.Path == entry.Path
+			}) {
+				continue
 			}
-		} else {
-			taskDefinitionYamlPaths = append(taskDefinitionYamlPaths, fileOrDir)
+			mintDirEntries = append(mintDirEntries, entry)
 		}
 	}
-	taskDefinitionYamlPaths = removeDuplicateStrings(taskDefinitionYamlPaths)
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to get current working directory")
+	definitionEntries := append(targetedEntries, mintDirEntries...)
+
+	// When no files are targeted, lint all .mint files
+	if len(cfg.MintFilePaths) == 0 && len(mintDirEntries) > 0 {
+		targetedEntries = mintDirEntries
 	}
 
-	// Normalize paths to be relative to current working directory.
-	relativeTaskDefinitionYamlPaths := make([]string, len(taskDefinitionYamlPaths))
-	for i, yamlPath := range taskDefinitionYamlPaths {
-		if relativePath, err := filepath.Rel(wd, yamlPath); err == nil {
-			relativeTaskDefinitionYamlPaths[i] = relativePath
-		} else {
-			relativeTaskDefinitionYamlPaths[i] = yamlPath
+	taskDefinitions := Map(definitionEntries, func(entry MintDirectoryEntry) TaskDefinition {
+		return TaskDefinition{
+			Path:         entry.Path,
+			FileContents: entry.FileContents,
 		}
-	}
-	relativeTaskDefinitionYamlPaths = removeDuplicateStrings(relativeTaskDefinitionYamlPaths)
-
-	taskDefinitions, err := taskDefinitionsFromPaths(relativeTaskDefinitionYamlPaths)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to read provided files")
-	}
-	taskDefinitions = removeDuplicates(taskDefinitions, func(td api.TaskDefinition) string {
-		return td.Path
 	})
 
-	var targetPaths []string
-	if len(cfg.MintFilePaths) > 0 {
-		targetPaths = make([]string, len(cfg.MintFilePaths))
+	targetedPaths := Map(targetedEntries, func(entry MintDirectoryEntry) string {
+		return entry.Path
+	})
 
-		for i, yamlPath := range cfg.MintFilePaths {
-			if relativePath, err := filepath.Rel(wd, yamlPath); err == nil {
-				targetPaths[i] = relativePath
-			} else {
-				targetPaths[i] = yamlPath
-			}
-		}
-		targetPaths = removeDuplicateStrings(targetPaths)
-		_, snippetFileNames := findSnippets(targetPaths)
+	if len(cfg.MintFilePaths) > 0 {
+		_, snippetFileNames := findSnippets(targetedPaths)
 		if len(snippetFileNames) > 0 {
 			return nil, fmt.Errorf("You cannot target snippets for linting, but you targeted the following snippets: %s\n\nTo lint snippets, include them from a Mint run definition and lint the run definition.", strings.Join(snippetFileNames, ", "))
 		}
 	} else {
-		targetPaths = relativeTaskDefinitionYamlPaths
-		nonSnippetFileNames, _ := findSnippets(targetPaths)
-		targetPaths = nonSnippetFileNames
+		nonSnippetFileNames, _ := findSnippets(targetedPaths)
+		targetedPaths = nonSnippetFileNames
 	}
 
 	lintResult, err := s.APIClient.Lint(api.LintConfig{
 		TaskDefinitions: taskDefinitions,
-		TargetPaths:     targetPaths,
+		TargetPaths:     targetedPaths,
 	})
-	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to lint files")
 	}
@@ -380,7 +361,7 @@ func (s Service) Lint(cfg LintConfig) (*api.LintResult, error) {
 	case LintOutputOneLine:
 		err = outputLintOneLine(s.Stdout, lintResult.Problems)
 	case LintOutputMultiLine:
-		err = outputLintMultiLine(s.Stdout, lintResult.Problems, len(targetPaths))
+		err = outputLintMultiLine(s.Stdout, lintResult.Problems, len(targetedPaths))
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to output lint results")
@@ -540,6 +521,7 @@ func (s Service) Whoami(cfg WhoamiConfig) error {
 }
 
 func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
+	defer s.outputLatestVersionMessage()
 	err := cfg.Validate()
 	if err != nil {
 		return errors.Wrap(err, "validation failed")
@@ -587,7 +569,6 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 		VaultName: cfg.Vault,
 		Secrets:   secrets,
 	})
-	s.outputLatestVersionMessage()
 
 	if result != nil && len(result.SetSecrets) > 0 {
 		fmt.Fprintln(s.Stdout)
@@ -601,24 +582,72 @@ func (s Service) SetSecretsInVault(cfg SetSecretsInVaultConfig) error {
 	return nil
 }
 
+func (s Service) ResolveLeaves(cfg ResolveLeavesConfig) (ResolveLeavesResult, error) {
+	err := cfg.Validate()
+	if err != nil {
+		return ResolveLeavesResult{}, errors.Wrap(err, "validation failed")
+	}
+
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.DefaultDir)
+	if err != nil {
+		return ResolveLeavesResult{}, errors.Wrap(err, "unable to find .mint directory")
+	}
+
+	yamlFiles, err := getFileOrDirectoryYAMLEntries(cfg.Files, mintDirectoryPath)
+	if err != nil {
+		return ResolveLeavesResult{}, err
+	}
+
+	if len(yamlFiles) == 0 {
+		return ResolveLeavesResult{}, fmt.Errorf("no files provided, and no yaml files found in directory %s", mintDirectoryPath)
+	}
+
+	mintFiles := filterYAMLFilesForModification(yamlFiles, func(doc *YAMLDoc) bool {
+		return true
+	})
+
+	replacements, err := s.resolveOrUpdateLeavesForFiles(mintFiles, false, cfg.LatestVersionPicker)
+	if err != nil {
+		return ResolveLeavesResult{}, err
+	}
+
+	if len(replacements) == 0 {
+		fmt.Fprintln(s.Stdout, "No leaves to resolve.")
+	} else {
+		fmt.Fprintln(s.Stdout, "Resolved the following leaves:")
+		for leaf, version := range replacements {
+			fmt.Fprintf(s.Stdout, "\t%s → %s\n", leaf, version)
+		}
+	}
+
+	return ResolveLeavesResult{ResolvedLeaves: replacements}, nil
+}
+
 func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
+	defer s.outputLatestVersionMessage()
 	err := cfg.Validate()
 	if err != nil {
 		return errors.Wrap(err, "validation failed")
 	}
 
-	entries, err := getFileOrDirectoryYAMLEntries(cfg.Files, cfg.DefaultDir)
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.DefaultDir)
+	if err != nil {
+		return errors.Wrap(err, "unable to find .mint directory")
+	}
+
+	yamlFiles, err := getFileOrDirectoryYAMLEntries(cfg.Files, mintDirectoryPath)
 	if err != nil {
 		return err
 	}
 
-	if len(entries) == 0 {
-		return errors.New(fmt.Sprintf("no files provided, and no yaml files found in directory %s", cfg.DefaultDir))
+	if len(yamlFiles) == 0 {
+		return errors.New(fmt.Sprintf("no files provided, and no yaml files found in directory %s", mintDirectoryPath))
 	}
 
-	mintFiles := filterYAMLFilesForModification(entries, func(doc *YAMLDoc) bool {
+	mintFiles := filterYAMLFilesForModification(yamlFiles, func(doc *YAMLDoc) bool {
 		return true
 	})
+
 	replacements, err := s.resolveOrUpdateLeavesForFiles(mintFiles, true, cfg.ReplacementVersionPicker)
 	if err != nil {
 		return err
@@ -666,7 +695,6 @@ func (s Service) parseLeafVersion(str string) LeafVersion {
 
 func (s Service) resolveOrUpdateLeavesForFiles(mintFiles []*MintYAMLFile, update bool, versionPicker func(versions api.LeafVersionsResult, leaf string, major string) (string, error)) (map[string]string, error) {
 	leafVersions, err := s.APIClient.GetLeafVersions()
-	s.outputLatestVersionMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to fetch leaf versions")
 	}
@@ -724,43 +752,25 @@ func (s Service) resolveOrUpdateLeavesForFiles(mintFiles []*MintYAMLFile, update
 	return replacements, nil
 }
 
-func (s Service) UpdateBase(cfg UpdateBaseConfig) (ResolveBaseResult, error) {
-	err := cfg.Validate()
-	if err != nil {
-		return ResolveBaseResult{}, errors.Wrap(err, "validation failed")
-	}
-
-	yamlFiles, err := getFileOrDirectoryYAMLEntries(cfg.Files, cfg.DefaultDir)
-	if err != nil {
-		return ResolveBaseResult{}, err
-	}
-
-	if len(yamlFiles) == 0 {
-		return ResolveBaseResult{}, fmt.Errorf("no files found in mint directory %q", cfg.DefaultDir)
-	}
-
-	result, err := s.resolveOrUpdateBaseForFiles(yamlFiles, BaseLayerSpec{}, true)
-	s.outputLatestVersionMessage()
-	if err != nil {
-		return ResolveBaseResult{}, err
-	}
-
-	return result, nil
-}
-
 func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
+	defer s.outputLatestVersionMessage()
 	err := cfg.Validate()
 	if err != nil {
 		return ResolveBaseResult{}, errors.Wrap(err, "validation failed")
 	}
 
-	yamlFiles, err := getFileOrDirectoryYAMLEntries(cfg.Files, cfg.DefaultDir)
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.DefaultDir)
+	if err != nil {
+		return ResolveBaseResult{}, errors.Wrap(err, "unable to find .mint directory")
+	}
+
+	yamlFiles, err := getFileOrDirectoryYAMLEntries(cfg.Files, mintDirectoryPath)
 	if err != nil {
 		return ResolveBaseResult{}, err
 	}
 
 	if len(yamlFiles) == 0 {
-		return ResolveBaseResult{}, fmt.Errorf("no files found in mint directory %q", cfg.DefaultDir)
+		return ResolveBaseResult{}, fmt.Errorf("no files provided, and no yaml files found in directory %s", mintDirectoryPath)
 	}
 
 	requestedSpec := BaseLayerSpec{
@@ -770,7 +780,6 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 	}
 
 	result, err := s.resolveOrUpdateBaseForFiles(yamlFiles, requestedSpec, false)
-	s.outputLatestVersionMessage()
 	if err != nil {
 		return ResolveBaseResult{}, err
 	}
@@ -790,7 +799,7 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 		if len(result.UpdatedRunFiles) > 0 {
 			fmt.Fprintf(s.Stdout, "Added base to %s:\n", pluralizeFiles(result.UpdatedRunFiles))
 			for _, runFile := range result.UpdatedRunFiles {
-				fmt.Fprintf(s.Stdout, "\t%s\n", runFile.Filepath)
+				fmt.Fprintf(s.Stdout, "\t%s\n", runFile.Path)
 			}
 			if len(result.ErroredRunFiles) > 0 {
 				fmt.Fprintln(s.Stdout)
@@ -800,7 +809,7 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 		if len(result.ErroredRunFiles) > 0 {
 			fmt.Fprintf(s.Stdout, "Failed to add base to %s:\n", pluralizeFiles(result.ErroredRunFiles))
 			for _, runFile := range result.ErroredRunFiles {
-				fmt.Fprintf(s.Stdout, "\t%s → %s\n", runFile.Filepath, runFile.Error)
+				fmt.Fprintf(s.Stdout, "\t%s → %s\n", runFile.Path, runFile.Error)
 			}
 		}
 	}
@@ -808,56 +817,36 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 	return result, nil
 }
 
-func (s Service) getFilesForBaseResolveOrUpdate(mintFiles []api.MintDirectoryEntry, requestedSpec BaseLayerSpec, update bool) ([]BaseLayerRunFile, error) {
-	runFiles := make([]BaseLayerRunFile, 0)
-
-	for _, entry := range mintFiles {
-		content, err := os.ReadFile(entry.OriginalPath)
-		if err != nil {
-			return nil, err
-		}
-
-		// JSON is valid YAML, but we don't support modifying it
-		if isJSON(content) {
-			continue
-		}
-
-		doc, err := ParseYamlDoc(string(content))
-		if err != nil {
-			// Skip files that are not valid YAML
-			if isYAMLSyntaxError(err) {
-				continue
-			}
-			return nil, err
-		}
-
-		// Skip files that don't have a 'tasks' key
-		if !doc.HasTasks() {
-			continue
-		}
-
-		// Skip files that already define a 'base' with at least 'os' and 'tag'
-		if !update && doc.HasBase() && doc.TryReadStringAtPath("$.base.os") != "" && doc.TryReadStringAtPath("$.base.tag") != "" {
-			continue
-		}
-
-		parsed := struct {
-			Base BaseLayerSpec `yaml:"base"`
-		}{}
-		if err = yaml.Unmarshal(content, &parsed); err != nil {
-			return nil, err
-		}
-
-		runFiles = append(runFiles, BaseLayerRunFile{
-			Spec:     requestedSpec.Merge(parsed.Base),
-			Filepath: entry.OriginalPath,
-		})
+func (s Service) UpdateBase(cfg UpdateBaseConfig) (ResolveBaseResult, error) {
+	defer s.outputLatestVersionMessage()
+	err := cfg.Validate()
+	if err != nil {
+		return ResolveBaseResult{}, errors.Wrap(err, "validation failed")
 	}
 
-	return runFiles, nil
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.DefaultDir)
+	if err != nil {
+		return ResolveBaseResult{}, errors.Wrap(err, "unable to find .mint directory")
+	}
+
+	yamlFiles, err := getFileOrDirectoryYAMLEntries(cfg.Files, mintDirectoryPath)
+	if err != nil {
+		return ResolveBaseResult{}, err
+	}
+
+	if len(yamlFiles) == 0 {
+		return ResolveBaseResult{}, fmt.Errorf("no files found in mint directory %q", mintDirectoryPath)
+	}
+
+	result, err := s.resolveOrUpdateBaseForFiles(yamlFiles, BaseLayerSpec{}, true)
+	if err != nil {
+		return ResolveBaseResult{}, err
+	}
+
+	return result, nil
 }
 
-func (s Service) resolveOrUpdateBaseForFiles(mintFiles []api.MintDirectoryEntry, requestedSpec BaseLayerSpec, update bool) (ResolveBaseResult, error) {
+func (s Service) resolveOrUpdateBaseForFiles(mintFiles []MintDirectoryEntry, requestedSpec BaseLayerSpec, update bool) (ResolveBaseResult, error) {
 	runFiles, err := s.getFilesForBaseResolveOrUpdate(mintFiles, requestedSpec, update)
 	if err != nil {
 		return ResolveBaseResult{}, err
@@ -882,7 +871,7 @@ func (s Service) resolveOrUpdateBaseForFiles(mintFiles []api.MintDirectoryEntry,
 		}
 		runFile.ResolvedBase = resolvedBase
 
-		err := s.writeRunFileWithBase(runFile, resolvedBase)
+		err := s.writeRunFileWithBase(runFile)
 		if err != nil {
 			runFile.Error = err
 			erroredRunFiles = append(erroredRunFiles, runFile)
@@ -896,6 +885,38 @@ func (s Service) resolveOrUpdateBaseForFiles(mintFiles []api.MintDirectoryEntry,
 		ErroredRunFiles: erroredRunFiles,
 		UpdatedRunFiles: updatedRunFiles,
 	}, nil
+}
+
+func (s Service) getFilesForBaseResolveOrUpdate(entries []MintDirectoryEntry, requestedSpec BaseLayerSpec, update bool) ([]BaseLayerRunFile, error) {
+	yamlFiles := filterYAMLFilesForModification(entries, func(doc *YAMLDoc) bool {
+		if !doc.HasTasks() {
+			return false
+		}
+
+		// Skip files that already define a 'base' with at least 'os' and 'tag'
+		if !update && doc.HasBase() && doc.TryReadStringAtPath("$.base.os") != "" && doc.TryReadStringAtPath("$.base.tag") != "" {
+			return false
+		}
+
+		return true
+	})
+
+	runFiles := make([]BaseLayerRunFile, 0)
+	for _, yamlFile := range yamlFiles {
+		parsed := struct {
+			Base BaseLayerSpec `yaml:"base"`
+		}{}
+		if err := yaml.Unmarshal(yamlFile.Doc.Bytes(), &parsed); err != nil {
+			return nil, err
+		}
+
+		runFiles = append(runFiles, BaseLayerRunFile{
+			Spec: requestedSpec.Merge(parsed.Base),
+			Path: yamlFile.Entry.OriginalPath,
+		})
+	}
+
+	return runFiles, nil
 }
 
 func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpec]BaseLayerSpec, error) {
@@ -937,86 +958,58 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 	return specToResolved, nil
 }
 
-func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile, resolvedBase BaseLayerSpec) error {
-	fi, err := os.Stat(runFile.Filepath)
-	if err != nil {
-		return fmt.Errorf("error getting file info for %q: %w", runFile.Filepath, err)
+func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile) error {
+	doc, err := ParseYAMLFile(runFile.Path)
+
+	resolvedBase := runFile.ResolvedBase
+	base := map[string]any{
+		"os": resolvedBase.Os,
 	}
 
-	fileMode := fi.Mode()
-	file, err := os.OpenFile(runFile.Filepath, os.O_RDWR|os.O_CREATE, fileMode)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return err
-	}
-
-	doc, err := ParseYamlDoc(string(content))
-	if err != nil {
-		return err
+	// Prevent unnecessary quoting of float-like tags, eg. 1.2
+	if strings.Count(resolvedBase.Tag, ".") == 1 {
+		parsedTag, err := strconv.ParseFloat(resolvedBase.Tag, 64)
+		if err != nil {
+			return err
+		}
+		base["tag"] = parsedTag
+	} else {
+		base["tag"] = resolvedBase.Tag
 	}
 
-	if err := doc.InsertOrUpdateBase(resolvedBase); err != nil {
-		return err
+	if resolvedBase.Arch != "" && resolvedBase.Arch != DefaultArch {
+		base["arch"] = resolvedBase.Arch
+	}
+
+	if !doc.HasBase() {
+		err = doc.InsertBefore("$.tasks", map[string]any{
+			"base": base,
+		})
+		if err != nil {
+			return err
+		}
+	} else {
+		if err = doc.MergeAtPath("$.base", base); err != nil {
+			return err
+		}
 	}
 
 	if !doc.HasChanges() {
 		return nil
 	}
 
-	if err = file.Truncate(0); err != nil {
-		return err
-	}
-
-	if _, err = file.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-
-	_, err = doc.WriteTo(file)
-	return err
-}
-
-func (s Service) ResolveLeaves(cfg ResolveLeavesConfig) (ResolveLeavesResult, error) {
-	err := cfg.Validate()
-	if err != nil {
-		return ResolveLeavesResult{}, errors.Wrap(err, "validation failed")
-	}
-
-	entries, err := getFileOrDirectoryYAMLEntries(cfg.Files, cfg.DefaultDir)
-	if err != nil {
-		return ResolveLeavesResult{}, err
-	}
-
-	if len(entries) == 0 {
-		return ResolveLeavesResult{}, errors.New(fmt.Sprintf("no files provided, and no yaml files found in directory %s", cfg.DefaultDir))
-	}
-
-	mintFiles := filterYAMLFilesForModification(entries, func(doc *YAMLDoc) bool {
-		return true
-	})
-
-	replacements, err := s.resolveOrUpdateLeavesForFiles(mintFiles, false, cfg.LatestVersionPicker)
-	if err != nil {
-		return ResolveLeavesResult{}, err
-	}
-
-	if len(replacements) == 0 {
-		fmt.Fprintln(s.Stdout, "No leaves to resolve.")
-	} else {
-		fmt.Fprintln(s.Stdout, "Resolved the following leaves:")
-		for leaf, version := range replacements {
-			fmt.Fprintf(s.Stdout, "\t%s → %s\n", leaf, version)
-		}
-	}
-
-	return ResolveLeavesResult{ResolvedLeaves: replacements}, nil
+	return doc.WriteFile(runFile.Path)
 }
 
 func (s Service) outputLatestVersionMessage() {
+	if !versions.HasCliLatestVersion() {
+		return
+	}
+
+	if !hasOutputVersionMessage.CompareAndSwap(false, true) {
+		return
+	}
+
 	showLatestVersion := os.Getenv("MINT_HIDE_LATEST_VERSION") == ""
 
 	if !showLatestVersion || !versions.NewVersionAvailable() {
@@ -1089,6 +1082,14 @@ func removeDuplicates[T any, K comparable](list []T, identity func(t T) K) []T {
 		}
 	}
 	return ts
+}
+
+func Map[T any, R any](input []T, transformer func(T) R) []R {
+	result := make([]R, len(input))
+	for i, item := range input {
+		result[i] = transformer(item)
+	}
+	return result
 }
 
 func tryGetSliceAtIndex[S ~[]E, E any](s S, index int, defaultValue E) E {

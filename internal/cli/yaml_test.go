@@ -17,7 +17,7 @@ a:
   b: hello
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(doc.TryReadStringAtPath("$.a.c")).To(Equal(""))
@@ -29,7 +29,7 @@ a:
   b: hello
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(doc.ReadStringAtPath("$.a.b")).To(Equal("hello"))
@@ -43,7 +43,7 @@ tasks-but-not-really:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(doc.HasTasks()).To(BeFalse())
@@ -60,7 +60,7 @@ tasks:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(doc.HasTasks()).To(BeTrue())
@@ -74,103 +74,10 @@ tasks-but-not-really:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(doc.HasTasks()).To(BeFalse())
-		})
-	})
-
-	Context("InsertOrUpdateBase", func() {
-		It("inserts missing base before tasks", func() {
-			contents := `
-on:
-  github:
-    push:
-      init:
-        commit-sha: ${{ event.git.sha }}
-
-tag: not it
-
-base:
-  # comment
-  os: linux
-  tag: 1.0
-
-tasks:
-  - key: task1 # another line comment
-  - key: task2
-`
-
-			doc, err := cli.ParseYamlDoc(contents)
-			Expect(err).NotTo(HaveOccurred())
-
-			err = doc.InsertOrUpdateBase(cli.BaseLayerSpec{
-				Os:   "linux",
-				Tag:  "1.2",
-				Arch: "x86_64",
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(doc.String()).To(Equal(`on:
-  github:
-    push:
-      init:
-        commit-sha: ${{ event.git.sha }}
-
-tag: not it
-
-base:
-  # comment
-  os: linux
-  tag: 1.2
-
-tasks:
-  - key: task1 # another line comment
-  - key: task2
-`))
-		})
-
-		It("updates existing base", func() {
-			contents := `
-on:
-  github:
-    push:
-      init:
-        commit-sha: ${{ event.git.sha }}
-
-tag: not it
-
-tasks:
-  - key: task1 # another line comment
-  - key: task2
-`
-
-			doc, err := cli.ParseYamlDoc(contents)
-			Expect(err).NotTo(HaveOccurred())
-
-			err = doc.InsertOrUpdateBase(cli.BaseLayerSpec{
-				Os:   "linux",
-				Tag:  "1.2",
-				Arch: "arm64",
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(doc.String()).To(Equal(`on:
-  github:
-    push:
-      init:
-        commit-sha: ${{ event.git.sha }}
-
-tag: not it
-
-base:
-  arch: arm64
-  os: linux
-  tag: 1.2
-
-tasks:
-  - key: task1 # another line comment
-  - key: task2
-`))
 		})
 	})
 
@@ -190,7 +97,7 @@ tasks:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			err = doc.InsertBefore("$.tasks", map[string]any{
@@ -227,7 +134,7 @@ tasks:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			err = doc.MergeAtPath("$.base", map[string]any{
@@ -260,7 +167,7 @@ tasks:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			err = doc.MergeAtPath("$.base", map[string]any{
@@ -295,7 +202,7 @@ tasks:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			err = doc.MergeAtPath("$.base", map[string]any{
@@ -330,7 +237,7 @@ tasks:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			err = doc.ReplaceAtPath("$.base.tag", 1.2)
@@ -362,7 +269,7 @@ tasks:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			err = doc.ReplaceAtPath("$.base.tag", 1.2)
@@ -392,7 +299,7 @@ tasks:
   - key: task2
 `
 
-			doc, err := cli.ParseYamlDoc(contents)
+			doc, err := cli.ParseYAMLDoc(contents)
 			Expect(err).NotTo(HaveOccurred())
 
 			err = doc.SetAtPath("$.base", map[string]any{

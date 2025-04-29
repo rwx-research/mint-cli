@@ -3,7 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +18,29 @@ type TaskDefinition = api.TaskDefinition
 type MintYAMLFile struct {
 	Entry MintDirectoryEntry
 	Doc   *YAMLDoc
+}
+
+// findMintDirectoryPath returns a configured directory, if it exists, or walks up
+// from the working directory to find a .mint directory. If the found path is not
+// a directory or is not readable, an error is returned.
+func findAndValidateMintDirectoryPath(configuredDirectory string) (string, error) {
+	foundPath, err := findMintDirectoryPath(configuredDirectory)
+	if err != nil {
+		return "", err
+	}
+
+	if foundPath != "" {
+		mintDirInfo, err := os.Stat(foundPath)
+		if err != nil {
+			return foundPath, fmt.Errorf("unable to read the .mint directory at %q", foundPath)
+		}
+
+		if !mintDirInfo.IsDir() {
+			return foundPath, fmt.Errorf(".mint directory at %q is not a directory", foundPath)
+		}
+	}
+
+	return foundPath, nil
 }
 
 // findMintDirectoryPath returns a configured directory, if it exists, or walks up
@@ -64,7 +86,7 @@ func getFileOrDirectoryYAMLEntries(files []string, mintDir string) ([]MintDirect
 
 // getFileOrDirectoryEntries gets a MintDirectoryEntry for every given file, or all files in mintDir when no files are provided.
 func getFileOrDirectoryEntries(files []string, mintDir string) ([]MintDirectoryEntry, error) {
-	if len(files) > 0 {
+	if len(files) != 0 {
 		return mintDirectoryEntriesFromPaths(files)
 	} else if mintDir != "" {
 		return mintDirectoryEntries(mintDir)
@@ -72,55 +94,33 @@ func getFileOrDirectoryEntries(files []string, mintDir string) ([]MintDirectoryE
 	return make([]MintDirectoryEntry, 0), nil
 }
 
-// mintDirectoryEntries reads all files in the given dir and ensures the total size in within limits.
-func mintDirectoryEntries(dir string) ([]MintDirectoryEntry, error) {
-	entries := make([]MintDirectoryEntry, 0)
-	var totalSize int
-
-	err := filepath.Walk(dir, func(pathInDir string, info os.FileInfo, err error) error {
-		if err != nil {
-			return fmt.Errorf("error reading %q: %w", pathInDir, err)
-		}
-
-		entry, entrySize, err := mintDirectoryEntry(pathInDir, info, dir)
-		if err != nil {
-			return err
-		}
-
-		totalSize += entrySize
-		entries = append(entries, entry)
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve the entire contents of the .mint directory %q: %w", dir, err)
-	}
-	if totalSize > 5*1024*1024 {
-		return nil, fmt.Errorf("the size of the .mint directory at %q exceeds 5MiB", dir)
-	}
-
-	return entries, nil
+// mintDirectoryEntriesFromPaths loads all the files in paths relative to the current working directory.
+func mintDirectoryEntriesFromPaths(paths []string) ([]MintDirectoryEntry, error) {
+	return readMintDirectoryEntries(paths, "")
 }
 
-// mintDirectoryEntriesFromPaths reads given file paths and ensures the total size in within limits.
-func mintDirectoryEntriesFromPaths(paths []string) ([]MintDirectoryEntry, error) {
+// mintDirectoryEntries loads all the files in the given dotMintPath relative to the parent of dotMintPath.
+func mintDirectoryEntries(dotMintPath string) ([]MintDirectoryEntry, error) {
+	return readMintDirectoryEntries([]string{dotMintPath}, dotMintPath)
+}
+
+func readMintDirectoryEntries(paths []string, relativeTo string) ([]MintDirectoryEntry, error) {
 	entries := make([]MintDirectoryEntry, 0)
 	var totalSize int
 
 	for _, path := range paths {
-		info, err := os.Lstat(path)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error while stating %q", path)
-		}
+		filepath.WalkDir(path, func(subpath string, de os.DirEntry, err error) error {
+			entry, entrySize, err := mintDirectoryEntry(subpath, de, relativeTo)
+			if err != nil {
+				return err
+			}
 
-		entry, entrySize, err := mintDirectoryEntry(path, info, "")
-		if err != nil {
-			return nil, err
-		}
-
-		totalSize += entrySize
-		entries = append(entries, entry)
+			totalSize += entrySize
+			entries = append(entries, entry)
+			return nil
+		})
 	}
+
 	if totalSize > 5*1024*1024 {
 		return nil, fmt.Errorf("the size of the these files exceed 5MiB: %s", strings.Join(paths, ", "))
 	}
@@ -129,7 +129,12 @@ func mintDirectoryEntriesFromPaths(paths []string) ([]MintDirectoryEntry, error)
 }
 
 // mintDirectoryEntry finds the file at path and converts it to a MintDirectoryEntry.
-func mintDirectoryEntry(path string, info os.FileInfo, makePathRelativeTo string) (MintDirectoryEntry, int, error) {
+func mintDirectoryEntry(path string, de os.DirEntry, makePathRelativeTo string) (MintDirectoryEntry, int, error) {
+	info, err := de.Info()
+	if err != nil {
+		return MintDirectoryEntry{}, 0, err
+	}
+
 	mode := info.Mode()
 	permissions := mode.Perm()
 
@@ -187,34 +192,7 @@ func mintDirectoryEntry(path string, info os.FileInfo, makePathRelativeTo string
 	}, contentLength, nil
 }
 
-// taskDefinitionsFromPaths opens each file specified in `paths` and reads their content as a string.
-// No validation takes place here.
-func taskDefinitionsFromPaths(paths []string) ([]TaskDefinition, error) {
-	taskDefinitions := make([]api.TaskDefinition, 0)
-
-	for _, path := range paths {
-		fd, err := os.Open(path)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error while opening %q", path)
-		}
-		defer fd.Close()
-
-		fileContent, err := io.ReadAll(fd)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error while reading %q", path)
-		}
-
-		taskDefinitions = append(taskDefinitions, TaskDefinition{
-			Path:         path,
-			FileContents: string(fileContent),
-		})
-	}
-
-	return taskDefinitions, nil
-}
-
 // filterYAMLFiles finds any *.yml and *.yaml files in the given entries.
-// No further validation is made.
 func filterYAMLFiles(entries []MintDirectoryEntry) []MintDirectoryEntry {
 	yamlFiles := make([]MintDirectoryEntry, 0)
 
@@ -227,6 +205,21 @@ func filterYAMLFiles(entries []MintDirectoryEntry) []MintDirectoryEntry {
 	}
 
 	return yamlFiles
+}
+
+// filterFiles finds only files in the given entries.
+func filterFiles(entries []MintDirectoryEntry) []MintDirectoryEntry {
+	files := make([]MintDirectoryEntry, 0)
+
+	for _, entry := range entries {
+		if !entry.IsFile() {
+			continue
+		}
+
+		files = append(files, entry)
+	}
+
+	return files
 }
 
 // filterYAMLFilesForModification finds any *.yml and *.yaml files in the given entries
@@ -264,7 +257,7 @@ func validateYAMLFileForModification(entry MintDirectoryEntry, filter func(doc *
 		return nil
 	}
 
-	doc, err := ParseYamlDoc(string(content))
+	doc, err := ParseYAMLDoc(string(content))
 	if err != nil {
 		return nil
 	}
@@ -285,5 +278,5 @@ func isJSON(content []byte) bool {
 }
 
 func isYAMLFile(entry MintDirectoryEntry) bool {
-	return entry.Type == "file" && (strings.HasSuffix(entry.OriginalPath, ".yml") || strings.HasSuffix(entry.OriginalPath, ".yaml"))
+	return entry.IsFile() && (strings.HasSuffix(entry.OriginalPath, ".yml") || strings.HasSuffix(entry.OriginalPath, ".yaml"))
 }

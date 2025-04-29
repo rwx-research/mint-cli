@@ -1,13 +1,10 @@
 package cli
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -16,22 +13,29 @@ import (
 	"github.com/rwx-research/mint-cli/internal/errors"
 )
 
-const DefaultArch = "x86_64"
-
 type YAMLDoc struct {
 	astFile  *ast.File
 	original string
 	latest   *string
 }
 
-func ParseYamlDoc(contents string) (*YAMLDoc, error) {
-	astFile, err := parser.ParseBytes([]byte(contents), parser.ParseComments)
+func ParseYAMLDoc(content string) (*YAMLDoc, error) {
+	astFile, err := parser.ParseBytes([]byte(content), parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
 	latest := astFile.String()
 
 	return &YAMLDoc{astFile: astFile, original: latest, latest: &latest}, nil
+}
+
+func ParseYAMLFile(path string) (*YAMLDoc, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseYAMLDoc(string(content))
 }
 
 func (doc *YAMLDoc) Bytes() []byte {
@@ -73,35 +77,6 @@ func (doc *YAMLDoc) TryReadStringAtPath(yamlPath string) string {
 		return ""
 	}
 	return str
-}
-
-func (doc *YAMLDoc) InsertOrUpdateBase(spec BaseLayerSpec) error {
-	base := map[string]any{
-		"os": spec.Os,
-	}
-
-	// Prevent unnecessary quoting of float-like tags, eg. 1.2
-	if strings.Count(spec.Tag, ".") == 1 {
-		parsedTag, err := strconv.ParseFloat(spec.Tag, 64)
-		if err != nil {
-			return err
-		}
-		base["tag"] = parsedTag
-	} else {
-		base["tag"] = spec.Tag
-	}
-
-	if spec.Arch != "" && spec.Arch != DefaultArch {
-		base["arch"] = spec.Arch
-	}
-
-	if !doc.HasBase() {
-		return doc.InsertBefore("$.tasks", map[string]any{
-			"base": base,
-		})
-	} else {
-		return doc.MergeAtPath("$.base", base)
-	}
 }
 
 func (doc *YAMLDoc) InsertBefore(beforeYamlPath string, value any) error {
@@ -241,18 +216,11 @@ func (doc *YAMLDoc) ForEachNode(yamlPath string, f func(node ast.Node) error) er
 	return nil
 }
 
-func (doc *YAMLDoc) WriteTo(w io.Writer) (int64,error) {
-	b := bytes.NewBuffer(doc.Bytes())
-	return io.Copy(w, b)
-}
-
 func (doc *YAMLDoc) WriteFile(path string) error {
 	// Inherit permissions from the existing file if it exists
-	var mode fs.FileMode
+	mode := fs.FileMode(0644)
 	if fi, err := os.Stat(path); err == nil {
 		mode = fi.Mode()
-	} else {
-		mode = fs.FileMode(0644)
 	}
 
 	return os.WriteFile(path, doc.Bytes(), mode)
@@ -289,12 +257,4 @@ func (doc *YAMLDoc) reparseAst(contents string) error {
 	doc.astFile = astFile
 	doc.latest = nil
 	return nil
-}
-
-func isYAMLSyntaxError(err error) bool {
-	if err == nil {
-		return false
-	}
-	_, ok := err.(*yaml.SyntaxError)
-	return ok
 }

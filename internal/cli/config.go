@@ -253,7 +253,7 @@ func (b BaseLayerSpec) Merge(other BaseLayerSpec) BaseLayerSpec {
 type BaseLayerRunFile struct {
 	Spec         BaseLayerSpec
 	ResolvedBase BaseLayerSpec
-	Filepath     string
+	Path         string
 	Error        error
 	Updated      bool
 }
