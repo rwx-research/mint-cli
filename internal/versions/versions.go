@@ -10,7 +10,8 @@ import (
 )
 
 var versionHolder *lockedVersions
-var emptyVersion = semver.MustParse("0.0.0")
+
+var EmptyVersion = semver.MustParse("0.0.0")
 
 type lockedVersions struct {
 	currentVersion *semver.Version
@@ -27,7 +28,7 @@ func init() {
 
 	versionHolder = &lockedVersions{
 		currentVersion: currentVersion,
-		latestVersion:  emptyVersion,
+		latestVersion:  EmptyVersion,
 	}
 }
 
@@ -63,7 +64,7 @@ func NewVersionAvailable() bool {
 }
 
 func HasCliLatestVersion() bool {
-	return !GetCliLatestVersion().Equal(emptyVersion)
+	return !GetCliLatestVersion().Equal(EmptyVersion)
 }
 
 func InstalledWithHomebrew() bool {

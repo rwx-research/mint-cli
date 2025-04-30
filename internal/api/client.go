@@ -16,6 +16,8 @@ import (
 	"github.com/rwx-research/mint-cli/internal/versions"
 )
 
+var ErrNotFound = errors.New("not found")
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (rtf roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -490,19 +492,35 @@ func (c Client) ResolveBaseLayer(cfg ResolveBaseLayerConfig) (ResolveBaseLayerRe
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		msg := extractErrorMessage(resp.Body)
-		if msg == "" {
-			msg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
-		}
-		return result, errors.New(msg)
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return result, errors.Wrap(err, "unable to parse API response")
+	if err = decodeResponseJSON(resp, &result); err != nil {
+		return result, err
 	}
 
 	return result, nil
+}
+
+func decodeResponseJSON(resp *http.Response, result any) error {
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if result == nil {
+			return nil
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+			return errors.Wrap(err, "unable to parse API response")
+		}
+		return nil
+	}
+
+	errMsg := extractErrorMessage(resp.Body)
+	if errMsg == "" {
+		errMsg = fmt.Sprintf("Unable to call Mint API - %s", resp.Status)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return errors.Wrap(ErrNotFound, errMsg)
+	}
+
+	return errors.New(errMsg)
 }
 
 type ErrorMessage struct {

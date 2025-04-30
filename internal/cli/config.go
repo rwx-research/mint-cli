@@ -3,9 +3,11 @@ package cli
 import (
 	"io"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/errors"
+	"github.com/rwx-research/mint-cli/internal/versions"
 )
 
 type Config struct {
@@ -215,6 +217,14 @@ type BaseLayerSpec struct {
 	Arch string `yaml:"arch"`
 }
 
+func (b BaseLayerSpec) TagVersion() *semver.Version {
+	if b.Tag == "" {
+		return versions.EmptyVersion
+	}
+
+	return semver.MustParse(b.Tag)
+}
+
 func (b BaseLayerSpec) Equal(other BaseLayerSpec) bool {
 	if b.Os != other.Os {
 		return false
@@ -264,13 +274,14 @@ func (b BaseLayerSpec) Merge(other BaseLayerSpec) BaseLayerSpec {
 
 type BaseLayerRunFile struct {
 	Spec         BaseLayerSpec
+	OriginalBase BaseLayerSpec
 	ResolvedBase BaseLayerSpec
 	Path         string
 	Error        error
 }
 
 func (rf BaseLayerRunFile) HasChanges() bool {
-	return !rf.Spec.Equal(rf.ResolvedBase)
+	return !rf.OriginalBase.Equal(rf.ResolvedBase)
 }
 
 type ResolveBaseResult struct {

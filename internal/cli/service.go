@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,7 +24,6 @@ import (
 	"github.com/rwx-research/mint-cli/internal/versions"
 
 	"github.com/briandowns/spinner"
-	"github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
@@ -853,7 +854,7 @@ func (s Service) UpdateBase(cfg UpdateBaseConfig) (ResolveBaseResult, error) {
 			fmt.Fprintln(s.Stdout, "Updated base for the following run definitions:")
 			for _, runFile := range result.UpdatedRunFiles {
 				if runFile.Spec.Tag != "" {
-					fmt.Fprintf(s.Stdout, "\t%s tag %s → tag %s\n", runFile.Path, runFile.Spec.Tag, runFile.ResolvedBase.Tag)
+					fmt.Fprintf(s.Stdout, "\t%s tag %s → tag %s\n", runFile.Path, runFile.OriginalBase.Tag, runFile.ResolvedBase.Tag)
 				} else {
 					fmt.Fprintf(s.Stdout, "\t%s → tag %s\n", runFile.Path, runFile.ResolvedBase.Tag)
 				}
@@ -891,8 +892,8 @@ func (s Service) resolveOrUpdateBaseForFiles(mintFiles []MintDirectoryEntry, req
 	updatedRunFiles := make([]BaseLayerRunFile, 0, len(runFiles))
 	for _, runFile := range runFiles {
 		resolvedBase := specToResolved[runFile.Spec]
-		if (BaseLayerSpec{}) == resolvedBase {
-			return ResolveBaseResult{}, fmt.Errorf("unable to resolve base spec %+v", runFile.Spec)
+		if resolvedBase == (BaseLayerSpec{}) {
+			continue
 		}
 		runFile.ResolvedBase = resolvedBase
 
@@ -927,50 +928,134 @@ func (s Service) getFilesForBaseResolveOrUpdate(entries []MintDirectoryEntry, re
 
 	runFiles := make([]BaseLayerRunFile, 0)
 	for _, yamlFile := range yamlFiles {
-		parsed := struct {
-			Base BaseLayerSpec `yaml:"base"`
-		}{}
-		if err := yaml.Unmarshal(yamlFile.Doc.Bytes(), &parsed); err != nil {
-			return nil, err
+		spec := BaseLayerSpec{
+			Os:   yamlFile.Doc.TryReadStringAtPath("$.base.os"),
+			Tag:  yamlFile.Doc.TryReadStringAtPath("$.base.tag"),
+			Arch: yamlFile.Doc.TryReadStringAtPath("$.base.arch"),
 		}
 
 		runFiles = append(runFiles, BaseLayerRunFile{
-			Spec: requestedSpec.Merge(parsed.Base),
-			Path: yamlFile.Entry.OriginalPath,
+			OriginalBase: spec,
+			Spec:         requestedSpec.Merge(spec),
+			Path:         yamlFile.Entry.Path,
 		})
 	}
 
 	return runFiles, nil
 }
 
+func extractMajorVersion(v string) string {
+	parts := strings.Split(v, ".")
+	if len(parts) > 1 {
+		return parts[0]
+	}
+	return v
+}
+
+func flattenPathMap(pathMap map[string][]string) []string {
+	var result []string
+	for _, paths := range pathMap {
+		result = append(result, paths...)
+	}
+	slices.Sort(result)
+	return slices.Compact(result)
+}
+
+func (s Service) logUnknownBaseTag(tag string, paths []string) {
+	fmt.Fprintf(s.Stderr, "Unknown base tag %s for run definitions: %s\n",
+		tag, strings.Join(paths, ", "))
+}
+
 func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpec]BaseLayerSpec, error) {
-	// Get unique base layer specs to resolve from the server.
-	specToResolved := make(map[BaseLayerSpec]BaseLayerSpec)
+	// Group run files by unique specs to minimize API calls
+	type specGroup struct {
+		OriginalBases map[BaseLayerSpec]struct{}
+		RunFilePaths  map[string][]string
+		ResolvedSpec  BaseLayerSpec
+	}
+
+	// Maps normalized specs (what we'll resolve) to their group data
+	specGroups := make(map[BaseLayerSpec]*specGroup)
+
+	// Maps original specs to their normalized form for lookup
+	originalToNormalized := make(map[BaseLayerSpec]BaseLayerSpec)
+
+	// Group by normalized specs
 	for _, runFile := range runFiles {
-		specToResolved[runFile.Spec] = runFile.Spec
+		normalizedSpec := runFile.Spec
+		normalizedSpec.Tag = extractMajorVersion(normalizedSpec.Tag)
+
+		originalToNormalized[runFile.OriginalBase] = normalizedSpec
+
+		// Update or create the spec group
+		group, exists := specGroups[normalizedSpec]
+		if !exists {
+			group = &specGroup{
+				OriginalBases: make(map[BaseLayerSpec]struct{}),
+				RunFilePaths:  make(map[string][]string),
+			}
+			specGroups[normalizedSpec] = group
+		}
+
+		// Add the original base
+		group.OriginalBases[runFile.OriginalBase] = struct{}{}
+
+		// Group paths by original tag for better error reporting
+		originalTag := runFile.OriginalBase.Tag
+		group.RunFilePaths[originalTag] = append(group.RunFilePaths[originalTag], runFile.Path)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	errs, _ := errgroup.WithContext(ctx)
+	errs, ctx := errgroup.WithContext(ctx)
 	errs.SetLimit(3)
 
-	for spec := range specToResolved {
+	// Process each unique spec
+	var mu sync.Mutex
+	for normalizedSpec, group := range specGroups {
 		errs.Go(func() error {
-			resolvedSpec, err := s.APIClient.ResolveBaseLayer(api.ResolveBaseLayerConfig{
-				Os:   spec.Os,
-				Arch: spec.Arch,
-				Tag:  spec.Tag,
+			result, err := s.APIClient.ResolveBaseLayer(api.ResolveBaseLayerConfig{
+				Os:   normalizedSpec.Os,
+				Arch: normalizedSpec.Arch,
+				Tag:  normalizedSpec.Tag,
 			})
+
 			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("unable to resolve base layer %+v", spec))
+				if errors.Is(err, api.ErrNotFound) {
+					// For not found errors, we report all paths in the group but don't error out
+					allPaths := flattenPathMap(group.RunFilePaths)
+					s.logUnknownBaseTag(normalizedSpec.Tag, allPaths)
+					return nil
+				}
+				return errors.Wrapf(err, "unable to resolve base layer %+v", normalizedSpec)
 			}
 
-			specToResolved[spec] = BaseLayerSpec{
-				Os:   resolvedSpec.Os,
-				Tag:  resolvedSpec.Tag,
-				Arch: resolvedSpec.Arch,
+			resolvedSpec := BaseLayerSpec{
+				Os:   result.Os,
+				Tag:  result.Tag,
+				Arch: result.Arch,
 			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			group.ResolvedSpec = resolvedSpec
+
+			// Check each original base against the resolved version
+			for origBase := range maps.Keys(group.OriginalBases) {
+				// Only compare versions if they're in the same major version group
+				if extractMajorVersion(origBase.Tag) == extractMajorVersion(resolvedSpec.Tag) {
+					if origBase.TagVersion().GreaterThan(resolvedSpec.TagVersion()) {
+						// Report the specific tag that wasn't found
+						paths := group.RunFilePaths[origBase.Tag]
+						s.logUnknownBaseTag(origBase.Tag, paths)
+
+						// Don't modify the resolved base (eg. don't downgrade 1.2 -> 1.1)
+						delete(group.OriginalBases, origBase)
+						originalToNormalized[origBase] = origBase
+					}
+				}
+			}
+
 			return nil
 		})
 	}
@@ -979,7 +1064,16 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 		return nil, err
 	}
 
-	return specToResolved, nil
+	originalToResolved := make(map[BaseLayerSpec]BaseLayerSpec, len(runFiles))
+	for originalBase, normalizedSpec := range originalToNormalized {
+		group := specGroups[normalizedSpec]
+		// If resolution failed, don't add to the result
+		if group != nil && group.ResolvedSpec != (BaseLayerSpec{}) {
+			originalToResolved[originalBase] = group.ResolvedSpec
+		}
+	}
+
+	return originalToResolved, nil
 }
 
 func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile) error {
