@@ -109,16 +109,19 @@ func readMintDirectoryEntries(paths []string, relativeTo string) ([]MintDirector
 	var totalSize int
 
 	for _, path := range paths {
-		filepath.WalkDir(path, func(subpath string, de os.DirEntry, err error) error {
-			entry, entrySize, err := mintDirectoryEntry(subpath, de, relativeTo)
-			if err != nil {
-				return err
+		err := filepath.WalkDir(path, func(subpath string, de os.DirEntry, err error) error {
+			entry, entrySize, suberr := mintDirectoryEntry(subpath, de, relativeTo)
+			if suberr != nil {
+				return suberr
 			}
 
 			totalSize += entrySize
 			entries = append(entries, entry)
 			return nil
 		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "reading mint directory entries at %s", path)
+		}
 	}
 
 	if totalSize > 5*1024*1024 {

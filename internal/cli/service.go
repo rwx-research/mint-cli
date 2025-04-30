@@ -984,6 +984,9 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 
 func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile) error {
 	doc, err := ParseYAMLFile(runFile.Path)
+	if err != nil {
+		return err
+	}
 
 	resolvedBase := runFile.ResolvedBase
 	base := map[string]any{
@@ -1076,11 +1079,6 @@ func PickLatestMinorVersion(versions api.LeafVersionsResult, leaf string, major 
 	}
 
 	return latestVersion, nil
-}
-
-func removeDuplicateStrings(list []string) []string {
-	slices.Sort(list)
-	return slices.Compact(list)
 }
 
 func findSnippets(fileNames []string) (nonSnippetFileNames []string, snippetFileNames []string) {

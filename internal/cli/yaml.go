@@ -237,11 +237,7 @@ func (doc *YAMLDoc) getNodeAtPath(yamlPath string) (ast.Node, error) {
 
 func (doc *YAMLDoc) hasPath(yamlPath string) bool {
 	_, err := doc.getNodeAtPath(yamlPath)
-	if err != nil {
-		return false
-	}
-
-	return true
+	return err == nil
 }
 
 func (doc *YAMLDoc) modified() {
