@@ -51,6 +51,10 @@ var (
 	}
 )
 
+func addMintDirFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&MintDirectory, "dir", "d", "", "the directory your Mint files are located in, typically `.mint`. By default, the CLI traverses up until it finds a `.mint` directory.")
+}
+
 func init() {
 	// A different host can only be set over the environment
 	mintHost = os.Getenv("MINT_HOST")

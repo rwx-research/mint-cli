@@ -22,7 +22,7 @@ var (
 
 			return service.UpdateLeaves(cli.UpdateLeavesConfig{
 				Files:                    args,
-				DefaultDir:               ".mint",
+				MintDirectory:            MintDirectory,
 				ReplacementVersionPicker: replacementVersionPicker,
 			})
 		},
@@ -35,5 +35,6 @@ var (
 
 func init() {
 	leavesUpdateCmd.Flags().BoolVar(&LeavesAllowMajorVersionChange, "allow-major-version-change", false, "update leaves to the latest major version")
+	addMintDirFlag(leavesUpdateCmd)
 	leavesCmd.AddCommand(leavesUpdateCmd)
 }

@@ -588,7 +588,7 @@ func (s Service) ResolveLeaves(cfg ResolveLeavesConfig) (ResolveLeavesResult, er
 		return ResolveLeavesResult{}, errors.Wrap(err, "validation failed")
 	}
 
-	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.DefaultDir)
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.MintDirectory)
 	if err != nil {
 		return ResolveLeavesResult{}, errors.Wrap(err, "unable to find .mint directory")
 	}
@@ -630,7 +630,7 @@ func (s Service) UpdateLeaves(cfg UpdateLeavesConfig) error {
 		return errors.Wrap(err, "validation failed")
 	}
 
-	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.DefaultDir)
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.MintDirectory)
 	if err != nil {
 		return errors.Wrap(err, "unable to find .mint directory")
 	}
@@ -706,7 +706,10 @@ func (s Service) resolveOrUpdateLeavesForFiles(mintFiles []*MintYAMLFile, update
 		hasChange := false
 		err = file.Doc.ForEachNode("$.tasks[*].call", func(node ast.Node) error {
 			leafVersion := s.parseLeafVersion(node.String())
-			if !update && leafVersion.MajorVersion != "" {
+			if leafVersion.Name == "" {
+				// Leaves won't be found for eg. embedded runs, call: ${{ run.mint-dir }}/embed.yml
+				return nil
+			} else if !update && leafVersion.MajorVersion != "" {
 				return nil
 			}
 
@@ -759,7 +762,7 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 		return ResolveBaseResult{}, errors.Wrap(err, "validation failed")
 	}
 
-	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.DefaultDir)
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.MintDirectory)
 	if err != nil {
 		return ResolveBaseResult{}, errors.Wrap(err, "unable to find .mint directory")
 	}
@@ -792,7 +795,7 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 	}
 
 	if len(yamlFiles) == 0 {
-		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.DefaultDir)
+		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.MintDirectory)
 	} else if !result.HasChanges() {
 		fmt.Fprintln(s.Stdout, "No run files were missing base.")
 	} else {
@@ -824,7 +827,7 @@ func (s Service) UpdateBase(cfg UpdateBaseConfig) (ResolveBaseResult, error) {
 		return ResolveBaseResult{}, errors.Wrap(err, "validation failed")
 	}
 
-	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.DefaultDir)
+	mintDirectoryPath, err := findAndValidateMintDirectoryPath(cfg.MintDirectory)
 	if err != nil {
 		return ResolveBaseResult{}, errors.Wrap(err, "unable to find .mint directory")
 	}
@@ -841,6 +844,28 @@ func (s Service) UpdateBase(cfg UpdateBaseConfig) (ResolveBaseResult, error) {
 	result, err := s.resolveOrUpdateBaseForFiles(yamlFiles, BaseLayerSpec{}, true)
 	if err != nil {
 		return ResolveBaseResult{}, err
+	}
+
+	if !result.HasChanges() {
+		fmt.Fprintln(s.Stdout, "No run bases to update.")
+	} else {
+		if len(result.UpdatedRunFiles) > 0 {
+			fmt.Fprintln(s.Stdout, "Updated base for the following run definitions:")
+			for _, runFile := range result.UpdatedRunFiles {
+				if runFile.Spec.Tag != "" {
+					fmt.Fprintf(s.Stdout, "\t%s tag %s → tag %s\n", runFile.Path, runFile.Spec.Tag, runFile.ResolvedBase.Tag)
+				} else {
+					fmt.Fprintf(s.Stdout, "\t%s → tag %s\n", runFile.Path, runFile.ResolvedBase.Tag)
+				}
+			}
+		}
+
+		if len(result.ErroredRunFiles) > 0 {
+			fmt.Fprintf(s.Stdout, "Failed to add base to %d run definitions:\n", len(result.ErroredRunFiles))
+			for _, runFile := range result.ErroredRunFiles {
+				fmt.Fprintf(s.Stdout, "\t%s → %s\n", runFile.Path, runFile.Error)
+			}
+		}
 	}
 
 	return result, nil
@@ -875,8 +900,7 @@ func (s Service) resolveOrUpdateBaseForFiles(mintFiles []MintDirectoryEntry, req
 		if err != nil {
 			runFile.Error = err
 			erroredRunFiles = append(erroredRunFiles, runFile)
-		} else {
-			runFile.Updated = true
+		} else if runFile.HasChanges() {
 			updatedRunFiles = append(updatedRunFiles, runFile)
 		}
 	}

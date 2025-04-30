@@ -203,7 +203,7 @@ func (c Client) InitiateDispatch(cfg InitiateDispatchConfig) (*InitiateDispatchR
 
 	if resp.StatusCode != 201 {
 		errorStruct := struct {
-			Error  string `json:"error,omitempty"`
+			Error string `json:"error,omitempty"`
 		}{}
 
 		if err := json.NewDecoder(resp.Body).Decode(&errorStruct); err != nil {

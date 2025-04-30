@@ -1417,7 +1417,7 @@ AAAEC6442PQKevgYgeT0SIu9zwlnEMl6MF59ZgM+i0ByMv4eLJPqG3xnZcEQmktHj/GY2i
 				It("returns an error", func() {
 					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Files:                    []string{},
-						DefaultDir:               mintDir,
+						MintDirectory:            mintDir,
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1476,7 +1476,7 @@ tasks:
 
 					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
 						Files:                    []string{},
-						DefaultDir:               mintDir,
+						MintDirectory:            mintDir,
 						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 					Expect(err).NotTo(HaveOccurred())
@@ -1834,7 +1834,7 @@ tasks:
 
 				It("returns an error", func() {
 					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          mintDir,
+						MintDirectory:       mintDir,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1892,7 +1892,7 @@ tasks:
 					var err error
 
 					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          mintDir,
+						MintDirectory:       mintDir,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 					Expect(err).NotTo(HaveOccurred())
@@ -1942,7 +1942,7 @@ tasks:
 
 				It("returns an error", func() {
 					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          tmp,
+						MintDirectory:       tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -1967,7 +1967,7 @@ tasks:
 					var err error
 
 					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          tmp,
+						MintDirectory:       tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 					Expect(err).NotTo(HaveOccurred())
@@ -1983,7 +1983,7 @@ tasks:
 
 				It("indicates no leaves were resolved", func() {
 					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          tmp,
+						MintDirectory:       tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -2028,7 +2028,7 @@ tasks:
 					var err error
 
 					_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          tmp,
+						MintDirectory:       tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 					Expect(err).NotTo(HaveOccurred())
@@ -2056,7 +2056,7 @@ tasks:
 
 				It("indicates leaves were resolved", func() {
 					_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-						DefaultDir:          tmp,
+						MintDirectory:       tmp,
 						LatestVersionPicker: cli.PickLatestMajorVersion,
 					})
 
@@ -2072,7 +2072,7 @@ tasks:
 						var err error
 
 						_, err = service.ResolveLeaves(cli.ResolveLeavesConfig{
-							DefaultDir:          tmp,
+							MintDirectory:       tmp,
 							Files:               []string{filepath.Join(tmp, "bar.yaml")},
 							LatestVersionPicker: cli.PickLatestMajorVersion,
 						})
@@ -2151,7 +2151,7 @@ tasks:
 
 			It("returns an error", func() {
 				_, err := service.ResolveBase(cli.ResolveBaseConfig{
-					DefaultDir: mintDir,
+					MintDirectory: mintDir,
 				})
 
 				Expect(err).To(HaveOccurred())
@@ -2178,7 +2178,7 @@ tasks:
 
 			It("ignores the file", func() {
 				_, err := service.ResolveBase(cli.ResolveBaseConfig{
-					DefaultDir: mintDir,
+					MintDirectory: mintDir,
 				})
 
 				Expect(err).NotTo(HaveOccurred())
@@ -2217,8 +2217,8 @@ not-my-key:
 				var err error
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					DefaultDir: mintDir,
-					Arch:       "quantum",
+					MintDirectory: mintDir,
+					Arch:          "quantum",
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2263,9 +2263,9 @@ tasks:
 				Expect(err).NotTo(HaveOccurred())
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					DefaultDir: mintDir,
-					Files:      []string{"bar.yaml"},
-					Arch:       "quantum",
+					MintDirectory: mintDir,
+					Files:         []string{"bar.yaml"},
+					Arch:          "quantum",
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2320,7 +2320,7 @@ tasks:
 				var err error
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					DefaultDir: mintDir,
+					MintDirectory: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2375,7 +2375,7 @@ tasks:
 				var err error
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					DefaultDir: mintDir,
+					MintDirectory: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2429,7 +2429,7 @@ base:
 				var err error
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					DefaultDir: mintDir,
+					MintDirectory: mintDir,
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2491,8 +2491,8 @@ tasks:
 				var err error
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					DefaultDir: mintDir,
-					Os:         "gentoo 99",
+					MintDirectory: mintDir,
+					Os:            "gentoo 99",
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2554,7 +2554,7 @@ tasks:
 					}
 
 					_, err = service.ResolveBase(cli.ResolveBaseConfig{
-						DefaultDir: mintDir,
+						MintDirectory: mintDir,
 					})
 					Expect(err).To(HaveOccurred())
 					Expect(err.Error()).To(ContainSubstring("API request failed"))

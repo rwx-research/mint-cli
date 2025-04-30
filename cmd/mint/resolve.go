@@ -59,8 +59,8 @@ var (
 
 func resolveBase(files []string) error {
 	base, err := service.ResolveBase(cli.ResolveBaseConfig{
-		DefaultDir: ".mint",
-		Files:      files,
+		Files:         files,
+		MintDirectory: MintDirectory,
 	})
 	if err != nil {
 		return err
@@ -73,8 +73,8 @@ func resolveBase(files []string) error {
 
 func resolveLeaves(files []string) error {
 	_, err := service.ResolveLeaves(cli.ResolveLeavesConfig{
-		DefaultDir:          ".mint",
 		Files:               files,
+		MintDirectory:       MintDirectory,
 		LatestVersionPicker: cli.PickLatestMajorVersion,
 	})
 	return err
@@ -84,6 +84,11 @@ func init() {
 	resolveBaseCmd.Flags().StringVar(&resolveBaseOs, "os", "", "target operating system")
 	resolveBaseCmd.Flags().StringVar(&resolveBaseTag, "tag", "", "target base layer tag")
 	resolveBaseCmd.Flags().StringVar(&resolveBaseArch, "arch", "", "target architecture")
+	addMintDirFlag(resolveBaseCmd)
+
+	addMintDirFlag(resolveLeavesCmd)
+
 	resolveCmd.AddCommand(resolveBaseCmd)
 	resolveCmd.AddCommand(resolveLeavesCmd)
+	addMintDirFlag(resolveCmd)
 }
