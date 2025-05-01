@@ -105,6 +105,12 @@ func (doc *YAMLDoc) InsertBefore(beforeYamlPath string, value any) error {
 	// token.Prev: the separator token, eg. ":"
 	// token.Prev.Prev: key for the given beforeYamlPath
 	token := relativeNode.GetToken()
+	if token.Prev == nil {
+		return errors.New("unexpected token structure: token.Prev is nil")
+	}
+	if token.Prev.Prev == nil {
+		return errors.New("unexpected token structure: token.Prev.Prev is nil")
+	}
 	idx := token.Prev.Prev.Position.Offset - 1
 
 	node, err := yaml.NewEncoder(nil).EncodeToNode(value)
