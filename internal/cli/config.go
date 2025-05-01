@@ -3,9 +3,11 @@ package cli
 import (
 	"io"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/rwx-research/mint-cli/internal/accesstoken"
 	"github.com/rwx-research/mint-cli/internal/api"
 	"github.com/rwx-research/mint-cli/internal/errors"
+	"github.com/rwx-research/mint-cli/internal/versions"
 )
 
 type Config struct {
@@ -169,17 +171,22 @@ func (c SetSecretsInVaultConfig) Validate() error {
 	return nil
 }
 
+type UpdateBaseConfig struct {
+	MintDirectory string
+	Files         []string
+}
+
+func (c UpdateBaseConfig) Validate() error {
+	return nil
+}
+
 type UpdateLeavesConfig struct {
-	DefaultDir               string
+	MintDirectory            string
 	Files                    []string
 	ReplacementVersionPicker func(versions api.LeafVersionsResult, leaf string, major string) (string, error)
 }
 
 func (c UpdateLeavesConfig) Validate() error {
-	if len(c.Files) == 0 && c.DefaultDir == "" {
-		return errors.New("a default directory must be provided if not specifying files explicitly")
-	}
-
 	if c.ReplacementVersionPicker == nil {
 		return errors.New("a replacement version picker must be provided")
 	}
@@ -188,18 +195,14 @@ func (c UpdateLeavesConfig) Validate() error {
 }
 
 type ResolveBaseConfig struct {
-	DefaultDir string
-	Files      []string
-	Os         string
-	Tag        string
-	Arch       string
+	MintDirectory string
+	Files         []string
+	Os            string
+	Tag           string
+	Arch          string
 }
 
 func (c ResolveBaseConfig) Validate() error {
-	if c.DefaultDir == "" {
-		return errors.New("a default directory must be provided")
-	}
-
 	return nil
 }
 
@@ -207,6 +210,38 @@ type BaseLayerSpec struct {
 	Os   string `yaml:"os"`
 	Tag  string `yaml:"tag"`
 	Arch string `yaml:"arch"`
+}
+
+func (b BaseLayerSpec) TagVersion() *semver.Version {
+	if b.Tag == "" {
+		return versions.EmptyVersion
+	}
+
+	return semver.MustParse(b.Tag)
+}
+
+func (b BaseLayerSpec) Equal(other BaseLayerSpec) bool {
+	if b.Os != other.Os {
+		return false
+	}
+
+	if b.Tag != other.Tag {
+		return false
+	}
+
+	arch1 := b.Arch
+	if arch1 == "" {
+		arch1 = DefaultArch
+	}
+	arch2 := other.Arch
+	if arch2 == "" {
+		arch2 = DefaultArch
+	}
+	if arch1 != arch2 {
+		return false
+	}
+
+	return true
 }
 
 func (b BaseLayerSpec) Merge(other BaseLayerSpec) BaseLayerSpec {
@@ -234,10 +269,14 @@ func (b BaseLayerSpec) Merge(other BaseLayerSpec) BaseLayerSpec {
 
 type BaseLayerRunFile struct {
 	Spec         BaseLayerSpec
+	OriginalBase BaseLayerSpec
 	ResolvedBase BaseLayerSpec
-	Filepath     string
+	OriginalPath string
 	Error        error
-	Updated      bool
+}
+
+func (rf BaseLayerRunFile) HasChanges() bool {
+	return !rf.OriginalBase.Equal(rf.ResolvedBase)
 }
 
 type ResolveBaseResult struct {
@@ -250,7 +289,7 @@ func (r ResolveBaseResult) HasChanges() bool {
 }
 
 type ResolveLeavesConfig struct {
-	DefaultDir          string
+	MintDirectory       string
 	Files               []string
 	LatestVersionPicker func(versions api.LeafVersionsResult, leaf string, _ string) (string, error)
 }

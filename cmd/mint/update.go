@@ -9,16 +9,35 @@ var updateCmd = &cobra.Command{
 	Short: "Update versions for base layers and Mint leaves",
 	Use:   "update [flags] [files...]",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 && args[0] == "leaves" {
-			return updateLeaves(args[1:])
+		if len(args) > 0 {
+			switch args[0] {
+			case "base":
+				return updateBase(args[1:])
+			case "leaves":
+				return updateLeaves(args[1:])
+			}
 		}
 
+		err := updateBase(args)
+		if err != nil {
+			return err
+		}
 		return updateLeaves(args)
 	},
 }
 
 var (
 	AllowMajorVersionChange bool
+
+	updateBaseCmd = &cobra.Command{
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return updateBase(args)
+		},
+		Short: "Update all base layers to their latest (minor) version",
+		Long: "Update all base layers to their latest (minor) version.\n" +
+			"Takes a list of files as arguments, or updates all toplevel YAML files in .mint if no files are given.",
+		Use: "base [flags] [files...]",
+	}
 
 	updateLeavesCmd = &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -31,6 +50,14 @@ var (
 	}
 )
 
+func updateBase(files []string) error {
+	_, err := service.UpdateBase(cli.UpdateBaseConfig{
+		Files:         files,
+		MintDirectory: MintDirectory,
+	})
+	return err
+}
+
 func updateLeaves(files []string) error {
 	replacementVersionPicker := cli.PickLatestMinorVersion
 	if AllowMajorVersionChange {
@@ -39,13 +66,19 @@ func updateLeaves(files []string) error {
 
 	return service.UpdateLeaves(cli.UpdateLeavesConfig{
 		Files:                    files,
-		DefaultDir:               ".mint",
+		MintDirectory:            MintDirectory,
 		ReplacementVersionPicker: replacementVersionPicker,
 	})
 }
 
 func init() {
+	addMintDirFlag(updateBaseCmd)
+
 	updateLeavesCmd.Flags().BoolVar(&AllowMajorVersionChange, "allow-major-version-change", false, "update leaves to the latest major version")
+	addMintDirFlag(updateLeavesCmd)
+
 	updateCmd.Flags().BoolVar(&AllowMajorVersionChange, "allow-major-version-change", false, "update to the latest major version")
+	updateCmd.AddCommand(updateBaseCmd)
 	updateCmd.AddCommand(updateLeavesCmd)
+	addMintDirFlag(updateCmd)
 }

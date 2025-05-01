@@ -7,3 +7,11 @@ type MintDirectoryEntry struct {
 	Permissions  uint32 `json:"permissions"`
 	FileContents string `json:"file_contents"`
 }
+
+func (e MintDirectoryEntry) IsDir() bool {
+	return e.Type == "dir"
+}
+
+func (e MintDirectoryEntry) IsFile() bool {
+	return e.Type == "file"
+}

@@ -15,12 +15,12 @@ import (
 )
 
 var (
-	DispatchParams    []string
-	DispatchJson      bool
-	DispatchOpen      bool
-	DispatchDebug     bool
-	DispatchTitle     string
-	DispatchRef       string
+	DispatchParams []string
+	DispatchJson   bool
+	DispatchOpen   bool
+	DispatchDebug  bool
+	DispatchTitle  string
+	DispatchRef    string
 
 	dispatchCmd = &cobra.Command{
 		Args: cobra.ExactArgs(1),
