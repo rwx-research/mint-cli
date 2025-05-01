@@ -2172,9 +2172,7 @@ tasks:
 
 		Context("when yaml file is actually json", func() {
 			BeforeEach(func() {
-				var err error
-
-				err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`{
+				err := os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`{
 "tasks": [
   { "key": "a" },
   { "key": "b" }
@@ -2306,9 +2304,7 @@ tasks:
 
 		Context("when yaml file has a base with os but no tag or arch", func() {
 			BeforeEach(func() {
-				var err error
-
-				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
+				err := os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
     push: {}
 
@@ -2354,9 +2350,7 @@ tasks:
 
 		Context("when yaml file has a base with os and arch but no tag", func() {
 			BeforeEach(func() {
-				var err error
-
-				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
+				err := os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
     push: {}
 
@@ -2404,9 +2398,7 @@ tasks:
 
 		Context("when yaml file has base after tasks with os but no tag", func() {
 			BeforeEach(func() {
-				var err error
-
-				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
+				err := os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
     push: {}
 
@@ -2902,9 +2894,7 @@ tasks:
 
 		Context("when yaml file has a base with os and arch but no tag", func() {
 			BeforeEach(func() {
-				var err error
-
-				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
+				err := os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
     push: {}
 
@@ -2952,9 +2942,7 @@ tasks:
 
 		Context("when yaml file has base after tasks with os but no tag", func() {
 			BeforeEach(func() {
-				var err error
-
-				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
+				err := os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
     push: {}
 

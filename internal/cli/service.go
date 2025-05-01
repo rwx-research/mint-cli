@@ -1013,7 +1013,7 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	errs, ctx := errgroup.WithContext(ctx)
+	errs, _ := errgroup.WithContext(ctx)
 	errs.SetLimit(3)
 
 	// Process each unique spec
