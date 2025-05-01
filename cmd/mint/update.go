@@ -51,15 +51,9 @@ var (
 )
 
 func updateBase(files []string) error {
-	replacementVersionPicker := cli.PickLatestMinorVersion
-	if AllowMajorVersionChange {
-		replacementVersionPicker = cli.PickLatestMajorVersion
-	}
-
 	_, err := service.UpdateBase(cli.UpdateBaseConfig{
-		Files:                    files,
-		MintDirectory:            MintDirectory,
-		ReplacementVersionPicker: replacementVersionPicker,
+		Files:         files,
+		MintDirectory: MintDirectory,
 	})
 	return err
 }
@@ -78,7 +72,6 @@ func updateLeaves(files []string) error {
 }
 
 func init() {
-	updateBaseCmd.Flags().BoolVar(&AllowMajorVersionChange, "allow-major-version-change", false, "update base layers to the latest major version")
 	addMintDirFlag(updateBaseCmd)
 
 	updateLeavesCmd.Flags().BoolVar(&AllowMajorVersionChange, "allow-major-version-change", false, "update leaves to the latest major version")

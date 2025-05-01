@@ -788,22 +788,15 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 		return ResolveBaseResult{}, err
 	}
 
-	pluralizeFiles := func(files []BaseLayerRunFile) string {
-		if len(files) == 1 {
-			return "1 file"
-		}
-		return fmt.Sprintf("%d files", len(files))
-	}
-
 	if len(yamlFiles) == 0 {
 		fmt.Fprintf(s.Stdout, "No run files found in %q.\n", cfg.MintDirectory)
 	} else if !result.HasChanges() {
 		fmt.Fprintln(s.Stdout, "No run files were missing base.")
 	} else {
 		if len(result.UpdatedRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Added base to %s:\n", pluralizeFiles(result.UpdatedRunFiles))
+			fmt.Fprintln(s.Stdout, "Added base to the following run definitions:")
 			for _, runFile := range result.UpdatedRunFiles {
-				fmt.Fprintf(s.Stdout, "\t%s\n", runFile.Path)
+				fmt.Fprintf(s.Stdout, "\t%s → %s, tag %s\n", relativePathFromWd(runFile.OriginalPath), runFile.ResolvedBase.Os, runFile.ResolvedBase.Tag)
 			}
 			if len(result.ErroredRunFiles) > 0 {
 				fmt.Fprintln(s.Stdout)
@@ -811,9 +804,9 @@ func (s Service) ResolveBase(cfg ResolveBaseConfig) (ResolveBaseResult, error) {
 		}
 
 		if len(result.ErroredRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Failed to add base to %s:\n", pluralizeFiles(result.ErroredRunFiles))
+			fmt.Fprintln(s.Stdout, "Failed to add base to the following run definitions:")
 			for _, runFile := range result.ErroredRunFiles {
-				fmt.Fprintf(s.Stdout, "\t%s → %s\n", runFile.Path, runFile.Error)
+				fmt.Fprintf(s.Stdout, "\t%s → %s\n", relativePathFromWd(runFile.OriginalPath), runFile.Error)
 			}
 		}
 	}
@@ -839,7 +832,12 @@ func (s Service) UpdateBase(cfg UpdateBaseConfig) (ResolveBaseResult, error) {
 	}
 
 	if len(yamlFiles) == 0 {
-		return ResolveBaseResult{}, fmt.Errorf("no files found in mint directory %q", mintDirectoryPath)
+		errmsg := "no files provided, and no yaml files found"
+		if mintDirectoryPath != "" {
+			errmsg = fmt.Sprintf("%s in directory %s", errmsg, mintDirectoryPath)
+		}
+
+		return ResolveBaseResult{}, errors.New(errmsg)
 	}
 
 	result, err := s.resolveOrUpdateBaseForFiles(yamlFiles, BaseLayerSpec{}, true)
@@ -854,17 +852,20 @@ func (s Service) UpdateBase(cfg UpdateBaseConfig) (ResolveBaseResult, error) {
 			fmt.Fprintln(s.Stdout, "Updated base for the following run definitions:")
 			for _, runFile := range result.UpdatedRunFiles {
 				if runFile.Spec.Tag != "" {
-					fmt.Fprintf(s.Stdout, "\t%s tag %s → tag %s\n", runFile.Path, runFile.OriginalBase.Tag, runFile.ResolvedBase.Tag)
+					fmt.Fprintf(s.Stdout, "\t%s tag %s → tag %s\n", relativePathFromWd(runFile.OriginalPath), runFile.OriginalBase.Tag, runFile.ResolvedBase.Tag)
 				} else {
-					fmt.Fprintf(s.Stdout, "\t%s → tag %s\n", runFile.Path, runFile.ResolvedBase.Tag)
+					fmt.Fprintf(s.Stdout, "\t%s → tag %s\n", relativePathFromWd(runFile.OriginalPath), runFile.ResolvedBase.Tag)
+				}
+				if len(result.ErroredRunFiles) > 0 {
+					fmt.Println()
 				}
 			}
 		}
 
 		if len(result.ErroredRunFiles) > 0 {
-			fmt.Fprintf(s.Stdout, "Failed to add base to %d run definitions:\n", len(result.ErroredRunFiles))
+			fmt.Fprintln(s.Stdout, "Failed to updated base for the following run definitions:")
 			for _, runFile := range result.ErroredRunFiles {
-				fmt.Fprintf(s.Stdout, "\t%s → %s\n", runFile.Path, runFile.Error)
+				fmt.Fprintf(s.Stdout, "\t%s → %s\n", relativePathFromWd(runFile.OriginalPath), runFile.Error)
 			}
 		}
 	}
@@ -891,8 +892,8 @@ func (s Service) resolveOrUpdateBaseForFiles(mintFiles []MintDirectoryEntry, req
 	erroredRunFiles := make([]BaseLayerRunFile, 0, len(runFiles))
 	updatedRunFiles := make([]BaseLayerRunFile, 0, len(runFiles))
 	for _, runFile := range runFiles {
-		resolvedBase := specToResolved[runFile.Spec]
-		if resolvedBase == (BaseLayerSpec{}) {
+		resolvedBase, found := specToResolved[runFile.Spec]
+		if !found {
 			continue
 		}
 		runFile.ResolvedBase = resolvedBase
@@ -937,7 +938,7 @@ func (s Service) getFilesForBaseResolveOrUpdate(entries []MintDirectoryEntry, re
 		runFiles = append(runFiles, BaseLayerRunFile{
 			OriginalBase: spec,
 			Spec:         requestedSpec.Merge(spec),
-			Path:         yamlFile.Entry.Path,
+			OriginalPath: yamlFile.Entry.OriginalPath,
 		})
 	}
 
@@ -962,6 +963,9 @@ func flattenPathMap(pathMap map[string][]string) []string {
 }
 
 func (s Service) logUnknownBaseTag(tag string, paths []string) {
+	paths = Map(paths, func(p string) string {
+		return relativePathFromWd(p)
+	})
 	fmt.Fprintf(s.Stderr, "Unknown base tag %s for run definitions: %s\n",
 		tag, strings.Join(paths, ", "))
 }
@@ -977,7 +981,9 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 	// Maps normalized specs (what we'll resolve) to their group data
 	specGroups := make(map[BaseLayerSpec]*specGroup)
 
-	// Maps original specs to their normalized form for lookup
+	// Maps original specs to their normalized form for lookup.
+	// This is the original _spec_, not the _original base_, which is
+	// an important distinction when defaults are provided via CLI args.
 	originalToNormalized := make(map[BaseLayerSpec]BaseLayerSpec)
 
 	// Group by normalized specs
@@ -985,7 +991,7 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 		normalizedSpec := runFile.Spec
 		normalizedSpec.Tag = extractMajorVersion(normalizedSpec.Tag)
 
-		originalToNormalized[runFile.OriginalBase] = normalizedSpec
+		originalToNormalized[runFile.Spec] = normalizedSpec
 
 		// Update or create the spec group
 		group, exists := specGroups[normalizedSpec]
@@ -1002,7 +1008,7 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 
 		// Group paths by original tag for better error reporting
 		originalTag := runFile.OriginalBase.Tag
-		group.RunFilePaths[originalTag] = append(group.RunFilePaths[originalTag], runFile.Path)
+		group.RunFilePaths[originalTag] = append(group.RunFilePaths[originalTag], runFile.OriginalPath)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1077,7 +1083,7 @@ func (s Service) resolveBaseSpecs(runFiles []BaseLayerRunFile) (map[BaseLayerSpe
 }
 
 func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile) error {
-	doc, err := ParseYAMLFile(runFile.Path)
+	doc, err := ParseYAMLFile(runFile.OriginalPath)
 	if err != nil {
 		return err
 	}
@@ -1119,7 +1125,7 @@ func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile) error {
 		return nil
 	}
 
-	return doc.WriteFile(runFile.Path)
+	return doc.WriteFile(runFile.OriginalPath)
 }
 
 func (s Service) outputLatestVersionMessage() {

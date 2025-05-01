@@ -172,16 +172,11 @@ func (c SetSecretsInVaultConfig) Validate() error {
 }
 
 type UpdateBaseConfig struct {
-	MintDirectory            string
-	Files                    []string
-	ReplacementVersionPicker func(versions api.LeafVersionsResult, leaf string, major string) (string, error) // TODO: no
+	MintDirectory string
+	Files         []string
 }
 
 func (c UpdateBaseConfig) Validate() error {
-	if c.ReplacementVersionPicker == nil {
-		return errors.New("a replacement version picker must be provided")
-	}
-
 	return nil
 }
 
@@ -276,7 +271,7 @@ type BaseLayerRunFile struct {
 	Spec         BaseLayerSpec
 	OriginalBase BaseLayerSpec
 	ResolvedBase BaseLayerSpec
-	Path         string
+	OriginalPath string
 	Error        error
 }
 

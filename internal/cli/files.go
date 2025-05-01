@@ -133,6 +133,10 @@ func readMintDirectoryEntries(paths []string, relativeTo string) ([]MintDirector
 
 // mintDirectoryEntry finds the file at path and converts it to a MintDirectoryEntry.
 func mintDirectoryEntry(path string, de os.DirEntry, makePathRelativeTo string) (MintDirectoryEntry, int, error) {
+	if de == nil {
+		return MintDirectoryEntry{}, 0, os.ErrNotExist
+	}
+
 	info, err := de.Info()
 	if err != nil {
 		return MintDirectoryEntry{}, 0, err
@@ -282,4 +286,28 @@ func isJSON(content []byte) bool {
 
 func isYAMLFile(entry MintDirectoryEntry) bool {
 	return entry.IsFile() && (strings.HasSuffix(entry.OriginalPath, ".yml") || strings.HasSuffix(entry.OriginalPath, ".yaml"))
+}
+
+func resolveWd() (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	// Return a consistent path, which can be an issue on macOS where
+	// /var is symlinked to /private/var.
+	return filepath.EvalSymlinks(wd)
+}
+
+func relativePathFromWd(path string) string {
+	wd, err := resolveWd()
+	if err != nil {
+		return path
+	}
+
+	if rel, err := filepath.Rel(wd, path); err == nil {
+		return rel
+	}
+
+	return path
 }

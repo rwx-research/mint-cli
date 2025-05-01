@@ -39,6 +39,9 @@ var _ = Describe("CLI Service", func() {
 		tmp, err = os.MkdirTemp(os.TempDir(), "cli-service")
 		Expect(err).NotTo(HaveOccurred())
 
+		tmp, err = filepath.EvalSymlinks(tmp)
+		Expect(err).NotTo(HaveOccurred())
+
 		originalWd, err = os.Getwd()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -2095,13 +2098,28 @@ tasks:
 	})
 
 	Describe("resolving base layers", func() {
-		var apiOs string
-		var apiTag string
-		var apiArch string
-		var apiCallCount int
-		var apiError func(callCount int) error
+		var (
+			apiOs        string
+			apiTag       string
+			apiArch      string
+			apiCallCount int
+			apiError     func(callCount int) error
+			workingDir   string
+			mintDir      string
+		)
 
 		BeforeEach(func() {
+			workingDir = filepath.Join(tmp, "subdir1/subdir2")
+			err := os.MkdirAll(workingDir, 0o755)
+			Expect(err).NotTo(HaveOccurred())
+
+			mintDir = filepath.Join(tmp, "subdir1/.mint")
+			err = os.MkdirAll(mintDir, 0o755)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = os.Chdir(workingDir)
+			Expect(err).NotTo(HaveOccurred())
+
 			apiOs = "gentoo 99"
 			apiTag = "1.2"
 			apiArch = "x86_64"
@@ -2135,14 +2153,9 @@ tasks:
 		})
 
 		Context("when no yaml files found in the default directory", func() {
-			var mintDir string
-
 			BeforeEach(func() {
 				var err error
 
-				mintDir = tmp
-
-				err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
 				Expect(err).NotTo(HaveOccurred())
 
 				err = os.WriteFile(filepath.Join(mintDir, "bar.json"), []byte("some json"), 0o644)
@@ -2150,9 +2163,7 @@ tasks:
 			})
 
 			It("returns an error", func() {
-				_, err := service.ResolveBase(cli.ResolveBaseConfig{
-					MintDirectory: mintDir,
-				})
+				_, err := service.ResolveBase(cli.ResolveBaseConfig{})
 
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("no files provided, and no yaml files found in directory %s", mintDir)))
@@ -2160,12 +2171,8 @@ tasks:
 		})
 
 		Context("when yaml file is actually json", func() {
-			var mintDir string
-
 			BeforeEach(func() {
 				var err error
-
-				mintDir = tmp
 
 				err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`{
 "tasks": [
@@ -2177,9 +2184,7 @@ tasks:
 			})
 
 			It("ignores the file", func() {
-				_, err := service.ResolveBase(cli.ResolveBaseConfig{
-					MintDirectory: mintDir,
-				})
+				_, err := service.ResolveBase(cli.ResolveBaseConfig{})
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(mockStderr.String()).To(Equal(""))
@@ -2188,12 +2193,8 @@ tasks:
 		})
 
 		Context("when yaml file doesn't include base", func() {
-			var mintDir string
-
 			BeforeEach(func() {
 				var err error
-
-				mintDir = tmp
 
 				err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
 				Expect(err).NotTo(HaveOccurred())
@@ -2217,8 +2218,7 @@ not-my-key:
 				var err error
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					MintDirectory: mintDir,
-					Arch:          "quantum",
+					Arch: "quantum",
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2237,8 +2237,8 @@ tasks:
 `))
 
 				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
-					"Added base to 1 file:\n\t%s\n",
-					filepath.Join(mintDir, "bar.yaml"),
+					"Added base to the following run definitions:\n%s\n",
+					"\t../.mint/bar.yaml → gentoo 99, tag 1.2",
 				)))
 
 				// yaml file without tasks key is unaffected
@@ -2263,9 +2263,8 @@ tasks:
 				Expect(err).NotTo(HaveOccurred())
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					MintDirectory: mintDir,
-					Files:         []string{"bar.yaml"},
-					Arch:          "quantum",
+					Files: []string{"../.mint/bar.yaml"},
+					Arch:  "quantum",
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2284,23 +2283,30 @@ tasks:
 `))
 
 				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
-					"Added base to 1 file:\n\t%s\n",
-					"bar.yaml",
+					"Added base to the following run definitions:\n%s\n",
+					"\t../.mint/bar.yaml → gentoo 99, tag 1.2",
 				)))
 
 				contents, err = os.ReadFile(filepath.Join(mintDir, "qux.yaml"))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(contents)).To(Equal(originalQuxContents))
 			})
+
+			It("errors when given a file that does not exist", func() {
+				var err error
+
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{
+					Files: []string{"does-not-exist.yaml"},
+					Arch:  "quantum",
+				})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal("reading mint directory entries at does-not-exist.yaml: file does not exist"))
+			})
 		})
 
 		Context("when yaml file has a base with os but no tag or arch", func() {
-			var mintDir string
-
 			BeforeEach(func() {
 				var err error
-
-				mintDir = tmp
 
 				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
@@ -2319,9 +2325,7 @@ tasks:
 			It("adds tag to base", func() {
 				var err error
 
-				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					MintDirectory: mintDir,
-				})
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{})
 				Expect(err).NotTo(HaveOccurred())
 
 				var contents []byte
@@ -2342,19 +2346,15 @@ tasks:
 `))
 
 				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
-					"Added base to 1 file:\n\t%s\n",
-					filepath.Join(mintDir, "ci.yaml"),
+					"Added base to the following run definitions:\n%s\n",
+					"\t../.mint/ci.yaml → gentoo 99, tag 1.2",
 				)))
 			})
 		})
 
 		Context("when yaml file has a base with os and arch but no tag", func() {
-			var mintDir string
-
 			BeforeEach(func() {
 				var err error
-
-				mintDir = tmp
 
 				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
@@ -2362,7 +2362,7 @@ tasks:
 
 base:
   os: gentoo 99
-  arch: quantum # comment removed
+  arch: quantum
 
 tasks:
   - key: a
@@ -2374,9 +2374,7 @@ tasks:
 			It("adds tag to base", func() {
 				var err error
 
-				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					MintDirectory: mintDir,
-				})
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{})
 				Expect(err).NotTo(HaveOccurred())
 
 				var contents []byte
@@ -2398,19 +2396,15 @@ tasks:
 `))
 
 				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
-					"Added base to 1 file:\n\t%s\n",
-					filepath.Join(mintDir, "ci.yaml"),
+					"Added base to the following run definitions:\n%s\n",
+					"\t../.mint/ci.yaml → gentoo 99, tag 1.2",
 				)))
 			})
 		})
 
 		Context("when yaml file has base after tasks with os but no tag", func() {
-			var mintDir string
-
 			BeforeEach(func() {
 				var err error
-
-				mintDir = tmp
 
 				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
   github:
@@ -2428,9 +2422,7 @@ base:
 			It("adds tag to base without moving base before tasks", func() {
 				var err error
 
-				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					MintDirectory: mintDir,
-				})
+				_, err = service.ResolveBase(cli.ResolveBaseConfig{})
 				Expect(err).NotTo(HaveOccurred())
 
 				var contents []byte
@@ -2451,19 +2443,15 @@ base:
 `))
 
 				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
-					"Added base to 1 file:\n\t%s\n",
-					filepath.Join(mintDir, "ci.yaml"),
+					"Added base to the following run definitions:\n%s\n",
+					"\t../.mint/ci.yaml → gentoo 99, tag 1.2",
 				)))
 			})
 		})
 
 		Context("with multiple yaml files", func() {
-			var mintDir string
-
 			BeforeEach(func() {
 				var err error
-
-				mintDir = tmp
 
 				err = os.WriteFile(filepath.Join(mintDir, "one.yaml"), []byte(`tasks:
   - key: a
@@ -2491,8 +2479,7 @@ tasks:
 				var err error
 
 				_, err = service.ResolveBase(cli.ResolveBaseConfig{
-					MintDirectory: mintDir,
-					Os:            "gentoo 99",
+					Os: "gentoo 99",
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2531,10 +2518,12 @@ tasks:
   - key: f
 `))
 
-				Expect(mockStdout.String()).To(ContainSubstring("Added base to 3 files:"))
-				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "one.yaml")))
-				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "two.yaml")))
-				Expect(mockStdout.String()).To(ContainSubstring(filepath.Join(mintDir, "three.yaml")))
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Added base to the following run definitions:\n%s\n%s\n%s\n",
+					"\t../.mint/one.yaml → gentoo 99, tag 1.2",
+					"\t../.mint/three.yaml → gentoo 99, tag 1.2",
+					"\t../.mint/two.yaml → gentoo 88, tag 1.2",
+				)))
 			})
 
 			Context("when an API request fails", func() {
@@ -2553,9 +2542,555 @@ tasks:
 						return nil
 					}
 
-					_, err = service.ResolveBase(cli.ResolveBaseConfig{
-						MintDirectory: mintDir,
-					})
+					_, err = service.ResolveBase(cli.ResolveBaseConfig{})
+					Expect(err).To(HaveOccurred())
+					Expect(err.Error()).To(ContainSubstring("API request failed"))
+
+					var contents []byte
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "one.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(string(contentsOne)))
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "two.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(string(contentsTwo)))
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "three.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(string(contentsThree)))
+				})
+			})
+		})
+	})
+
+	Describe("updating base layers", func() {
+		var (
+			apiOs        string
+			apiTag       string
+			apiArch      string
+			apiCallCount int
+			apiError     func(callCount int) error
+			workingDir   string
+			mintDir      string
+		)
+
+		BeforeEach(func() {
+			workingDir = filepath.Join(tmp, "subdir1/subdir2")
+			err := os.MkdirAll(workingDir, 0o755)
+			Expect(err).NotTo(HaveOccurred())
+
+			mintDir = filepath.Join(tmp, "subdir1/.mint")
+			err = os.MkdirAll(mintDir, 0o755)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = os.Chdir(workingDir)
+			Expect(err).NotTo(HaveOccurred())
+
+			apiOs = "gentoo 99"
+			apiTag = "1.5"
+			apiArch = "x86_64"
+			apiCallCount = 0
+			apiError = func(callCount int) error { return nil }
+
+			mockAPI.MockResolveBaseLayer = func(cfg api.ResolveBaseLayerConfig) (api.ResolveBaseLayerResult, error) {
+				apiCallCount += 1
+				if err := apiError(apiCallCount); err != nil {
+					return api.ResolveBaseLayerResult{}, err
+				}
+
+				os := cfg.Os
+				if os == "" {
+					os = apiOs
+				}
+				tag := cfg.Tag
+				if tag == "" || string(tag[0]) == "1" {
+					tag = apiTag
+				} else {
+					return api.ResolveBaseLayerResult{}, errors.Wrap(api.ErrNotFound, "unknown base tag")
+				}
+				arch := cfg.Arch
+				if arch == "" {
+					arch = apiArch
+				}
+				return api.ResolveBaseLayerResult{
+					Os:   os,
+					Tag:  tag,
+					Arch: arch,
+				}, nil
+			}
+		})
+
+		Context("when no yaml files found in the default directory", func() {
+			BeforeEach(func() {
+				var err error
+
+				err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = os.WriteFile(filepath.Join(mintDir, "bar.json"), []byte("some json"), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("returns an error", func() {
+				_, err := service.UpdateBase(cli.UpdateBaseConfig{})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("no files provided, and no yaml files found"))
+			})
+		})
+
+		Context("when yaml file is actually json", func() {
+			var mintDir string
+
+			BeforeEach(func() {
+				var err error
+
+				mintDir = tmp
+
+				err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`{
+"tasks": [
+  { "key": "a" },
+  { "key": "b" }
+]
+}`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("returns an error", func() {
+				_, err := service.UpdateBase(cli.UpdateBaseConfig{})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("no files provided, and no yaml files found"))
+			})
+		})
+
+		Context("when yaml file doesn't include a base", func() {
+			BeforeEach(func() {
+				var err error
+
+				err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
+tasks:
+  - key: a
+  - key: b
+`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
+not-my-key:
+  - key: qux
+    call: mint/setup-node 1.2.3
+`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("adds base to file", func() {
+				var err error
+
+				_, err = service.UpdateBase(cli.UpdateBaseConfig{})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`base:
+  os: gentoo 99
+  tag: 1.5
+
+tasks:
+  - key: a
+  - key: b
+`))
+
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Updated base for the following run definitions:\n%s\n",
+					"\t../.mint/bar.yaml → tag 1.5",
+				)))
+
+				// yaml file without tasks key is unaffected
+				contents, err = os.ReadFile(filepath.Join(mintDir, "baz.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`
+not-my-key:
+  - key: qux
+    call: mint/setup-node 1.2.3
+`))
+			})
+
+			It("adds base to only a targeted file", func() {
+				var err error
+
+				originalQuxContents := `
+tasks:
+  - key: a
+  - key: b
+`
+				err = os.WriteFile(filepath.Join(mintDir, "qux.yaml"), []byte(originalQuxContents), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = service.UpdateBase(cli.UpdateBaseConfig{
+					Files: []string{"../.mint/bar.yaml"},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`base:
+  os: gentoo 99
+  tag: 1.5
+
+tasks:
+  - key: a
+  - key: b
+`))
+
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Updated base for the following run definitions:\n%s\n",
+					"\t../.mint/bar.yaml → tag 1.5",
+				)))
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "qux.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(originalQuxContents))
+			})
+		})
+
+		Context("when yaml file includes an older base", func() {
+			BeforeEach(func() {
+				var err error
+
+				err = os.WriteFile(filepath.Join(mintDir, "foo.txt"), []byte("some txt"), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = os.WriteFile(filepath.Join(mintDir, "bar.yaml"), []byte(`
+base:
+  os: gentoo 99
+  tag: 1.1
+
+tasks:
+  - key: a
+  - key: b
+`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = os.WriteFile(filepath.Join(mintDir, "baz.yaml"), []byte(`
+not-my-key:
+  - key: qux
+    call: mint/setup-node 1.2.3
+`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("updates base tag", func() {
+				var err error
+
+				_, err = service.UpdateBase(cli.UpdateBaseConfig{})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`base:
+  os: gentoo 99
+  tag: 1.5
+
+tasks:
+  - key: a
+  - key: b
+`))
+
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Updated base for the following run definitions:\n%s\n",
+					"\t../.mint/bar.yaml tag 1.1 → tag 1.5",
+				)))
+
+				// yaml file without tasks key is unaffected
+				contents, err = os.ReadFile(filepath.Join(mintDir, "baz.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`
+not-my-key:
+  - key: qux
+    call: mint/setup-node 1.2.3
+`))
+			})
+
+			It("updates base for only a targeted file", func() {
+				var err error
+
+				originalQuxContents := `
+tasks:
+  - key: a
+  - key: b
+`
+				err = os.WriteFile(filepath.Join(mintDir, "qux.yaml"), []byte(originalQuxContents), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = service.UpdateBase(cli.UpdateBaseConfig{
+					Files: []string{"../.mint/bar.yaml"},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "bar.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`base:
+  os: gentoo 99
+  tag: 1.5
+
+tasks:
+  - key: a
+  - key: b
+`))
+
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Updated base for the following run definitions:\n%s\n",
+					"\t../.mint/bar.yaml tag 1.1 → tag 1.5",
+				)))
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "qux.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(originalQuxContents))
+			})
+		})
+
+		Context("when yaml file includes base tag newer than the server knows about", func() {
+			var originalContents string
+
+			BeforeEach(func() {
+				var err error
+
+				originalContents = `
+base:
+  os: gentoo 99
+  tag: 2.0
+
+tasks:
+  - key: a
+  - key: b
+`
+
+				err = os.WriteFile(filepath.Join(workingDir, "ci.yaml"), []byte(originalContents), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("errors without changing file", func() {
+				var err error
+
+				_, err = service.UpdateBase(cli.UpdateBaseConfig{
+					Files: []string{"ci.yaml"},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(workingDir, "ci.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(originalContents))
+
+				Expect(mockStderr.String()).To(Equal("Unknown base tag 2 for run definitions: ci.yaml\n"))
+				Expect(mockStdout.String()).To(Equal("No run bases to update.\n"))
+			})
+		})
+
+		Context("when yaml file has a base with os and arch but no tag", func() {
+			BeforeEach(func() {
+				var err error
+
+				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
+  github:
+    push: {}
+
+base:
+  os: gentoo 99
+  arch: quantum
+
+tasks:
+  - key: a
+  - key: b
+`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("adds tag to base", func() {
+				var err error
+
+				_, err = service.UpdateBase(cli.UpdateBaseConfig{})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "ci.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`on:
+  github:
+    push: {}
+
+base:
+  os: gentoo 99
+  arch: quantum
+  tag: 1.5
+
+tasks:
+  - key: a
+  - key: b
+`))
+
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Updated base for the following run definitions:\n%s\n",
+					"\t../.mint/ci.yaml → tag 1.5",
+				)))
+			})
+		})
+
+		Context("when yaml file has base after tasks with os but no tag", func() {
+			BeforeEach(func() {
+				var err error
+
+				err = os.WriteFile(filepath.Join(mintDir, "ci.yaml"), []byte(`on:
+  github:
+    push: {}
+
+tasks:
+  - key: a
+  - key: b
+
+base:
+  os: gentoo 99`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("adds tag to base without moving base before tasks", func() {
+				var err error
+
+				_, err = service.UpdateBase(cli.UpdateBaseConfig{})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "ci.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`on:
+  github:
+    push: {}
+
+tasks:
+  - key: a
+  - key: b
+
+base:
+  os: gentoo 99
+  tag: 1.5
+`))
+
+				Expect(mockStdout.String()).To(Equal(fmt.Sprintf(
+					"Updated base for the following run definitions:\n%s\n",
+					"\t../.mint/ci.yaml → tag 1.5",
+				)))
+			})
+		})
+
+		Context("with multiple yaml files", func() {
+			BeforeEach(func() {
+				var err error
+
+				err = os.WriteFile(filepath.Join(mintDir, "one.yaml"), []byte(`base:
+  os: gentoo 99
+  tag: 1.1
+
+tasks:
+  - key: a
+  - key: b
+`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = os.WriteFile(filepath.Join(mintDir, "two.yaml"), []byte(`base:
+  os: gentoo 88
+
+tasks:
+  - key: c
+  - key: d
+`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = os.WriteFile(filepath.Join(mintDir, "three.yaml"), []byte(`tasks:
+  - key: e
+  - key: f
+`), 0o644)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("updates all files", func() {
+				var err error
+
+				_, err = service.UpdateBase(cli.UpdateBaseConfig{})
+				Expect(err).NotTo(HaveOccurred())
+
+				var contents []byte
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "one.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`base:
+  os: gentoo 99
+  tag: 1.5
+
+tasks:
+  - key: a
+  - key: b
+`))
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "two.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`base:
+  os: gentoo 88
+  tag: 1.5
+
+tasks:
+  - key: c
+  - key: d
+`))
+
+				contents, err = os.ReadFile(filepath.Join(mintDir, "three.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(contents)).To(Equal(`base:
+  os: gentoo 99
+  tag: 1.5
+
+tasks:
+  - key: e
+  - key: f
+`))
+
+				Expect(mockStdout.String()).To(ContainSubstring("Updated base for the following run definitions:"))
+				Expect(mockStdout.String()).To(ContainSubstring("\t../.mint/one.yaml tag 1.1 → tag 1.5"))
+				Expect(mockStdout.String()).To(ContainSubstring("\t../.mint/two.yaml → tag 1.5"))
+				Expect(mockStdout.String()).To(ContainSubstring("\t../.mint/three.yaml → tag 1.5"))
+			})
+
+			Context("when an API request fails", func() {
+				It("doesn't update any files", func() {
+					contentsOne, err := os.ReadFile(filepath.Join(mintDir, "one.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					contentsTwo, err := os.ReadFile(filepath.Join(mintDir, "two.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					contentsThree, err := os.ReadFile(filepath.Join(mintDir, "three.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+
+					apiError = func(callCount int) error {
+						if callCount == 2 {
+							return errors.New("API request failed")
+						}
+						return nil
+					}
+
+					_, err = service.UpdateBase(cli.UpdateBaseConfig{})
 					Expect(err).To(HaveOccurred())
 					Expect(err.Error()).To(ContainSubstring("API request failed"))
 
