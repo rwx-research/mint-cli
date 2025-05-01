@@ -1588,6 +1588,17 @@ tasks:
 					majorLeafVersions["mint/setup-ruby"] = "1.0.1"
 					majorLeafVersions["mint/setup-go"] = "1.3.5"
 
+					minorLeafVersions["mint/setup-node"] = map[string]string{
+						"1": "1.2.3",
+					}
+					minorLeafVersions["mint/setup-ruby"] = map[string]string{
+						"0": "0.0.2",
+						"1": "1.0.1",
+					}
+					minorLeafVersions["mint/setup-go"] = map[string]string{
+						"1": "1.3.5",
+					}
+
 					var err error
 
 					originalFooContents = `
@@ -1611,20 +1622,21 @@ tasks:
 					Expect(err).NotTo(HaveOccurred())
 				})
 
-				It("updates all files", func() {
-					var err error
+				Context("with major version updates", func() {
+					It("updates all files", func() {
+						var err error
 
-					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
-						ReplacementVersionPicker: cli.PickLatestMajorVersion,
-					})
-					Expect(err).NotTo(HaveOccurred())
+						err = service.UpdateLeaves(cli.UpdateLeavesConfig{
+							Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
+							ReplacementVersionPicker: cli.PickLatestMajorVersion,
+						})
+						Expect(err).NotTo(HaveOccurred())
 
-					var contents []byte
+						var contents []byte
 
-					contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
-					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(Equal(`tasks:
+						contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(`tasks:
   - key: foo
     call: mint/setup-node 1.2.3
   - key: bar
@@ -1633,26 +1645,73 @@ tasks:
     call: mint/setup-go 1.3.5
 `))
 
-					contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
-					Expect(err).NotTo(HaveOccurred())
-					Expect(string(contents)).To(Equal(`tasks:
+						contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(`tasks:
   - key: foo
     call: mint/setup-ruby 1.0.1
 `))
-				})
-
-				It("indicates leaves were updated", func() {
-					err := service.UpdateLeaves(cli.UpdateLeavesConfig{
-						Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
-						ReplacementVersionPicker: cli.PickLatestMajorVersion,
 					})
 
-					Expect(err).NotTo(HaveOccurred())
-					Expect(mockStdout.String()).To(ContainSubstring("Updated the following leaves:"))
-					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-go → 1.3.5"))
-					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 → 1.2.3"))
-					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → 1.0.1"))
-					Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → 1.0.1"))
+					It("indicates leaves were updated", func() {
+						err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+							Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
+							ReplacementVersionPicker: cli.PickLatestMajorVersion,
+						})
+
+						Expect(err).NotTo(HaveOccurred())
+						Expect(mockStdout.String()).To(ContainSubstring("Updated the following leaves:"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-go → 1.3.5"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 → 1.2.3"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → 1.0.1"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → 1.0.1"))
+					})
+				})
+
+				Context("with minor version updates only", func() {
+					It("updates all files", func() {
+						var err error
+
+						err = service.UpdateLeaves(cli.UpdateLeavesConfig{
+							Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
+							ReplacementVersionPicker: cli.PickLatestMinorVersion,
+						})
+						Expect(err).NotTo(HaveOccurred())
+
+						var contents []byte
+
+						contents, err = os.ReadFile(filepath.Join(tmp, "foo.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-node 1.2.3
+  - key: bar
+    call: mint/setup-ruby 0.0.2
+  - key: baz
+    call: mint/setup-go 1.3.5
+`))
+
+						contents, err = os.ReadFile(filepath.Join(tmp, "bar.yaml"))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(string(contents)).To(Equal(`tasks:
+  - key: foo
+    call: mint/setup-ruby 1.0.1
+`))
+					})
+
+					It("indicates leaves were updated", func() {
+						err := service.UpdateLeaves(cli.UpdateLeavesConfig{
+							Files:                    []string{filepath.Join(tmp, "foo.yaml"), filepath.Join(tmp, "bar.yaml")},
+							ReplacementVersionPicker: cli.PickLatestMinorVersion,
+						})
+
+						Expect(err).NotTo(HaveOccurred())
+						Expect(mockStdout.String()).To(ContainSubstring("Updated the following leaves:"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-go → 1.3.5"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-node 1.0.1 → 1.2.3"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 0.0.1 → 0.0.2"))
+						Expect(mockStdout.String()).To(ContainSubstring("mint/setup-ruby 1.0.0 → 1.0.1"))
+					})
 				})
 
 				Context("when a single file is targeted", func() {
