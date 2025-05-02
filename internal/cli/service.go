@@ -1168,6 +1168,10 @@ func PickLatestMajorVersion(versions api.LeafVersionsResult, leaf string, _ stri
 }
 
 func PickLatestMinorVersion(versions api.LeafVersionsResult, leaf string, major string) (string, error) {
+	if major == "" {
+		return PickLatestMajorVersion(versions, leaf, major)
+	}
+
 	majorVersions, ok := versions.LatestMinor[leaf]
 	if !ok {
 		return "", fmt.Errorf("Unable to find the leaf %q; skipping it.", leaf)
