@@ -705,7 +705,17 @@ func (s Service) resolveOrUpdateLeavesForFiles(mintFiles []*MintYAMLFile, update
 
 	for _, file := range mintFiles {
 		hasChange := false
-		err = file.Doc.ForEachNode("$.tasks[*].call", func(node ast.Node) error {
+
+		var nodePath string
+		if file.Doc.IsRunDefinition() {
+			nodePath = "$.tasks[*].call"
+		} else if file.Doc.IsListOfTasks() {
+			nodePath = "$[*].call"
+		} else {
+			continue
+		}
+
+		err = file.Doc.ForEachNode(nodePath, func(node ast.Node) error {
 			leafVersion := s.parseLeafVersion(node.String())
 			if leafVersion.Name == "" {
 				// Leaves won't be found for eg. embedded runs, call: ${{ run.mint-dir }}/embed.yml

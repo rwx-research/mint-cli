@@ -62,6 +62,26 @@ func (doc *YAMLDoc) HasTasks() bool {
 	return doc.hasPath("$.tasks")
 }
 
+func (doc *YAMLDoc) IsRunDefinition() bool {
+	if len(doc.astFile.Docs) != 1 {
+		// Multi-document files are not supported
+		return false
+	}
+
+	yamlDoc := doc.astFile.Docs[0]
+	return yamlDoc.Body.Type() == ast.MappingType && doc.HasTasks()
+}
+
+func (doc *YAMLDoc) IsListOfTasks() bool {
+	if len(doc.astFile.Docs) != 1 {
+		// Multi-document files are not supported
+		return false
+	}
+
+	yamlDoc := doc.astFile.Docs[0]
+	return yamlDoc.Body.Type() == ast.SequenceType
+}
+
 func (doc *YAMLDoc) ReadStringAtPath(yamlPath string) (string, error) {
 	node, err := doc.getNodeAtPath(yamlPath)
 	if err != nil {
@@ -203,6 +223,11 @@ func (doc *YAMLDoc) SetAtPath(yamlPath string, value any) error {
 func (doc *YAMLDoc) ForEachNode(yamlPath string, f func(node ast.Node) error) error {
 	node, err := doc.getNodeAtPath(yamlPath)
 	if err != nil {
+		// The yamlPath isn't compatible with the underlying YAML doc, for instance
+		// an sequence of strings where we expect a sequence of maps.
+		if errors.Is(err, yaml.ErrInvalidQuery) || errors.Is(err, yaml.ErrNotFoundNode) {
+			return nil
+		}
 		return err
 	}
 
