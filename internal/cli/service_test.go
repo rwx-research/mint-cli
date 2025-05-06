@@ -1738,6 +1738,56 @@ tasks:
 `))
 					})
 				})
+
+				It("updates snippet files", func() {
+					var err error
+
+					mintDir := filepath.Join(tmp, ".mint")
+					err = os.MkdirAll(mintDir, 0o755)
+					Expect(err).NotTo(HaveOccurred())
+
+					originalBazContents := `
+# leading commment
+- key: foo
+  call: mint/setup-node 1.0.1
+- key: bar
+  call: mint/setup-go
+`
+
+					err = os.WriteFile(filepath.Join(mintDir, "_baz.yaml"), []byte(originalBazContents), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					originalQuxContents := `
+- not
+- a
+- list
+- of
+- tasks
+`
+
+					err = os.WriteFile(filepath.Join(mintDir, "_qux.yaml"), []byte(originalQuxContents), 0o644)
+					Expect(err).NotTo(HaveOccurred())
+
+					err = service.UpdateLeaves(cli.UpdateLeavesConfig{
+						ReplacementVersionPicker: cli.PickLatestMajorVersion,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					var contents []byte
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "_baz.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(`# leading commment
+- key: foo
+  call: mint/setup-node 1.2.3
+- key: bar
+  call: mint/setup-go 1.3.5
+`))
+
+					contents, err = os.ReadFile(filepath.Join(mintDir, "_qux.yaml"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(string(contents)).To(Equal(originalQuxContents))
+				})
 			})
 
 			Context("when a leaf cannot be found", func() {
