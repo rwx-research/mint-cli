@@ -63,10 +63,6 @@ func NewVersionAvailable() bool {
 	return latestVersion.GreaterThan(currentVersion)
 }
 
-func HasCliLatestVersion() bool {
-	return !GetCliLatestVersion().Equal(EmptyVersion)
-}
-
 func InstalledWithHomebrew() bool {
 	fname, err := os.Executable()
 	if err != nil {

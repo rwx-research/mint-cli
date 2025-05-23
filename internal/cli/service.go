@@ -1139,7 +1139,7 @@ func (s Service) writeRunFileWithBase(runFile BaseLayerRunFile) error {
 }
 
 func (s Service) outputLatestVersionMessage() {
-	if !versions.HasCliLatestVersion() {
+	if !versions.NewVersionAvailable() {
 		return
 	}
 
